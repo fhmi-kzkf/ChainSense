@@ -6,7 +6,7 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg)](#)
-[![Version](https://img.shields.io/badge/Version-2.1.0-orange.svg)](#)
+[![Version](https://img.shields.io/badge/Version-2.2.0-orange.svg)](#)
 [![Universal](https://img.shields.io/badge/Dataset-Universal%20Compatible-purple.svg)](#)
 
 **AI-powered graph insights for resilient supply chains**
@@ -43,7 +43,8 @@ ChainSense now automatically adapts to **ANY** CSV dataset structure! No more co
 ## 🎯 Key Features
 
 ### 📊 Level 1 - Exploratory Dashboard
-- **📁 Universal Data Upload**: Smart CSV processing that works with ANY dataset structure
+- **📁 Universal Data Upload**: Smart CSV/Excel processing that works with ANY dataset structure
+- **📦 Multiple File Support**: Upload and combine multiple CSV/Excel files for comprehensive analysis
 - **🔍 Intelligent Mapping**: Automatic relationship detection with 4 flexible strategies
 - **🕸️ Interactive Network Visualization**: Dynamic graphs with PyVis and vis.js integration
 - **📈 Network Metrics Analysis**: 
@@ -106,6 +107,19 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### 🆕 New Features in v2.2.0
+
+**Multiple File Upload Support:**
+- Upload multiple CSV files to combine into a single analysis
+- Upload Excel files (XLSX/XLS) in addition to CSV
+- Mix and match file types (CSV + Excel) in a single upload
+
+**How to Use Multiple Files:**
+1. Select "Multiple Files" option in the upload section
+2. Choose multiple CSV/Excel files from your system
+3. Click "Process Files" to combine and analyze all data
+4. ChainSense will automatically merge all files and detect relationships
+
 ## 📊 Demo
 
 ### Sample Data Analysis
@@ -140,6 +154,11 @@ Source,Destination
 Factory_A,Warehouse_B
 Warehouse_B,Store_C
 ```
+
+**📁 Multiple File Support:**
+- Upload multiple CSV files that will be automatically combined
+- Upload Excel files (XLSX/XLS) with supply chain data
+- Mix different file formats in a single analysis
 
 **✨ ChainSense automatically detects the best relationship structure from your data!**
 
@@ -294,6 +313,14 @@ graph TB
   - Use **Custom Two-Column** mapping for any two suitable columns
 - **Alternative**: Use "Load Sample Data" to test functionality
 
+#### CSV Parsing Errors
+- **Issue**: "Error tokenizing data. C error: Expected X fields in line Y, saw Z"
+- **Solution**: ChainSense now automatically handles malformed CSV files
+  - Skips problematic rows while preserving valid data
+  - Provides warning messages about skipped data
+  - Continues processing even with formatting issues
+- **Prevention**: Ensure consistent column counts in your CSV files
+
 #### Universal Compatibility Features
 - ✨ **No more "Missing required column" errors**
 - 🔍 **Intelligent column detection** for any CSV structure
@@ -309,6 +336,7 @@ graph TB
 - 🔄 Automatic fallback mechanisms for visualization failures
 - 🛡️ Graceful error handling with user-friendly messages
 - 📊 Multiple visualization backends (PyVis → vis.js → matplotlib)
+- 📁 Robust CSV/Excel parsing with automatic recovery from malformed files
 
 ## 🤝 Contributing
 
@@ -339,7 +367,14 @@ streamlit run app.py
 
 ## 📝 Version History
 
-### v2.1.0 - Universal Dataset Compatibility (Latest)
+### v2.2.0 - Multiple File & Excel Support (Latest)
+- ✨ **NEW**: Multiple CSV file upload support
+- 📊 **NEW**: Excel file support (XLSX/XLS)
+- 🔧 **NEW**: Mix and match file types in single upload
+- 🔄 **NEW**: Automatic file combination and analysis
+- 🛡️ **Enhanced**: Improved error handling for file uploads
+
+### v2.1.0 - Universal Dataset Compatibility
 - ✨ **NEW**: Universal CSV dataset compatibility
 - 🔍 **Smart Auto-Detection**: Intelligent relationship discovery
 - 📋 **4 Mapping Strategies**: Geographic, Product, Custom, Auto-detection

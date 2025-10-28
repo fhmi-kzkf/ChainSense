@@ -20,10 +20,85 @@ class SupplyChainData:
     def load_csv(self, uploaded_file) -> bool:
         """Load CSV data from uploaded file"""
         try:
-            self.df = pd.read_csv(uploaded_file)
+            # Check file extension to determine how to read it
+            file_name = uploaded_file.name.lower()
+            if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+                # Read Excel file
+                try:
+                    self.df = pd.read_excel(uploaded_file)
+                except Exception as e:
+                    st.error(f"Error reading Excel file: {str(e)}")
+                    return False
+            else:
+                # Read CSV file with error handling for malformed files
+                try:
+                    self.df = pd.read_csv(uploaded_file)
+                except pd.errors.ParserError as e:
+                    # Try with different parameters to handle malformed CSV
+                    try:
+                        uploaded_file.seek(0)  # Reset file pointer
+                        self.df = pd.read_csv(uploaded_file, on_bad_lines='skip', engine='python')
+                        st.warning(f"Some rows were skipped due to formatting issues: {str(e)}")
+                    except Exception as e2:
+                        st.error(f"Error reading CSV file: {str(e2)}")
+                        return False
+                except Exception as e:
+                    st.error(f"Error reading CSV file: {str(e)}")
+                    return False
             return True
         except Exception as e:
-            st.error(f"Error loading CSV: {str(e)}")
+            st.error(f"Error loading file: {str(e)}")
+            return False
+    
+    def load_multiple_files(self, uploaded_files) -> bool:
+        """Load and combine multiple CSV/Excel files"""
+        try:
+            dataframes = []
+            
+            for uploaded_file in uploaded_files:
+                # Check file extension to determine how to read it
+                file_name = uploaded_file.name.lower()
+                df = None
+                
+                if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+                    # Read Excel file
+                    try:
+                        df = pd.read_excel(uploaded_file)
+                    except Exception as e:
+                        st.warning(f"Error reading Excel file {uploaded_file.name}: {str(e)}")
+                        continue
+                else:
+                    # Read CSV file with error handling for malformed files
+                    try:
+                        df = pd.read_csv(uploaded_file)
+                    except pd.errors.ParserError as e:
+                        # Try with different parameters to handle malformed CSV
+                        try:
+                            uploaded_file.seek(0)  # Reset file pointer
+                            df = pd.read_csv(uploaded_file, on_bad_lines='skip', engine='python')
+                            st.warning(f"Some rows were skipped in {uploaded_file.name} due to formatting issues")
+                        except Exception as e2:
+                            st.warning(f"Error reading CSV file {uploaded_file.name}: {str(e2)}")
+                            continue
+                    except Exception as e:
+                        st.warning(f"Error reading CSV file {uploaded_file.name}: {str(e)}")
+                        continue
+                
+                if df is not None and not df.empty:
+                    dataframes.append(df)
+                elif df is not None:
+                    st.warning(f"No data found in file {uploaded_file.name}")
+            
+            if dataframes:
+                # Combine all dataframes
+                self.df = pd.concat(dataframes, ignore_index=True)
+                return True
+            else:
+                st.error("No valid data found in uploaded files")
+                return False
+                
+        except Exception as e:
+            st.error(f"Error loading files: {str(e)}")
             return False
     
     def validate_data(self) -> Tuple[bool, str]:

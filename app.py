@@ -340,6 +340,11 @@ def main():
     """Main application function"""
     initialize_session_state()
     
+    # Initialize default values for layout options
+    layout_option = "spring"
+    size_metric = "degree_centrality"
+    analysis_level = "Level 1 (Basic)"
+    
     # Header
     st.markdown("""
     <div class="main-header">
@@ -381,11 +386,69 @@ def main():
         
         # Data upload section
         st.subheader("📁 Data Upload")
-        uploaded_file = st.file_uploader(
-            "Choose a CSV file",
-            type="csv",
-            help="Upload a CSV file with supply chain data. Required columns: supplier, customer"
+        
+        # Initialize variables
+        uploaded_file = None
+        uploaded_files = []
+        
+        # Option to upload single or multiple files
+        upload_option = st.radio(
+            "Upload Options",
+            ["Single File", "Multiple Files"],
+            horizontal=True,
+            help="Choose to upload a single file or multiple files to combine"
         )
+        
+        if upload_option == "Single File":
+            uploaded_file = st.file_uploader(
+                "Choose a CSV or Excel file",
+                type=["csv", "xlsx", "xls"],
+                help="Upload a CSV or Excel file with supply chain data. Supported formats: CSV, XLSX, XLS"
+            )
+            
+            # Process single uploaded file
+            if uploaded_file is not None:
+                if st.button("🚀 Process File", use_container_width=True):
+                    if st.session_state.data_processor.load_csv(uploaded_file):
+                        st.success("📁 File loaded successfully!")
+                        
+                        # Try automatic relationship detection
+                        with st.spinner("🔍 Analyzing data structure..."):
+                            if st.session_state.data_processor.auto_detect_relationships():
+                                st.session_state.data_loaded = True
+                                st.success("✨ Supply chain relationships detected automatically!")
+                                st.rerun()
+                            else:
+                                # Show manual mapping interface
+                                st.warning("Could not auto-detect relationships. Please use manual mapping below.")
+                                st.session_state.show_mapping = True
+                                st.rerun()
+        else:
+            # Multiple file upload
+            uploaded_files = st.file_uploader(
+                "Choose multiple CSV or Excel files",
+                type=["csv", "xlsx", "xls"],
+                accept_multiple_files=True,
+                help="Upload multiple CSV or Excel files to combine into a single supply chain analysis"
+            )
+            
+            # Process multiple uploaded files
+            if uploaded_files and len(uploaded_files) > 0:
+                if st.button("🚀 Process Files", use_container_width=True):
+                    if st.session_state.data_processor.load_multiple_files(uploaded_files):
+                        st.success(f"📁 {len(uploaded_files)} files loaded successfully!")
+                        
+                        # Try automatic relationship detection
+                        with st.spinner("🔍 Analyzing combined data structure..."):
+                            if st.session_state.data_processor.auto_detect_relationships():
+                                st.session_state.data_loaded = True
+                                st.success("✨ Supply chain relationships detected automatically from combined data!")
+                                st.rerun()
+                            else:
+                                # Show manual mapping interface
+                                st.warning("Could not auto-detect relationships. Please use manual mapping below.")
+                                st.session_state.show_mapping = True
+                                st.rerun()
         
         # Sample data option
         if st.button("📊 Load Sample Data"):
@@ -416,6 +479,11 @@ def main():
         if st.session_state.data_loaded:
             st.subheader("⚙️ Analysis Options")
             
+            # Initialize default values
+            layout_option = "spring"
+            size_metric = "degree_centrality"
+            analysis_level = "Level 1 (Basic)"
+            
             # Graph layout options
             layout_option = st.selectbox(
                 "Graph Layout",
@@ -442,6 +510,10 @@ def main():
                 run_analysis(analysis_level)
     
     # Main content area with tabs
+    # Initialize default values for layout options
+    layout_option = "spring"
+    size_metric = "degree_centrality"
+    
     if st.session_state.data_loaded:
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Overview", "🕸️ Graph Visualization", "📈 Risk Metrics", "🔍 Advanced Analysis", "🛡️ Scenario Planning"])
         
