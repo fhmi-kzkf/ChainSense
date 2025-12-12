@@ -122,19 +122,23 @@ class SupplyChainVisualizer:
                 st.error("No nodes were successfully added to the visualization")
                 return self._create_fallback_graph(layout, node_size_metric, show_risk, height)
             
-            # Add edges
+            # Add edges with enhanced tooltip information
             edges_added = 0
             for edge in self.graph.edges(data=True):
                 source, target, data = edge
                 
-                # Edge tooltip
+                # Edge tooltip with enhanced information
                 edge_tooltip = self._create_edge_tooltip(source, target, data)
                 
-                # Edge width based on weight if available
+                # Edge width based on frequency if available
                 width = 1
-                if 'quantity' in data:
+                if 'frequency' in data:
+                    # Scale width based on frequency (log scale to prevent extremely thick lines)
+                    width = max(1, min(10, np.log(data['frequency'] + 1) * 2))
+                elif 'total_quantity' in data:
+                    # Fallback to quantity if frequency not available
                     try:
-                        width = max(1, min(5, data['quantity'] / 100))
+                        width = max(1, min(10, data['total_quantity'] / 100))
                     except:
                         width = 1
                 
@@ -795,12 +799,25 @@ class SupplyChainVisualizer:
         return tooltip
     
     def _create_edge_tooltip(self, source: str, target: str, data: Dict) -> str:
-        """Create tooltip for an edge"""
+        """Create tooltip for an edge with enhanced information"""
         tooltip = f"<b>{source} → {target}</b><br>"
         
+        # Add frequency information
+        if 'frequency' in data:
+            tooltip += f"Transaction Frequency: {data['frequency']}<br>"
+        
+        # Add quantity information
+        if 'total_quantity' in data:
+            tooltip += f"Total Quantity: {data['total_quantity']}<br>"
+        
+        # Add delay information
+        if 'avg_delay' in data:
+            tooltip += f"Average Delay: {data['avg_delay']:.2f} days<br>"
+        
+        # Add any other available data
         for key, value in data.items():
-            if key not in ['weight']:
-                tooltip += f"{key.title()}: {value}<br>"
+            if key not in ['frequency', 'total_quantity', 'avg_delay', 'title', 'weight']:
+                tooltip += f"{key.replace('_', ' ').title()}: {value}<br>"
         
         return tooltip
     

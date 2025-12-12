@@ -1,1554 +1,585 @@
-"""
-ChainSense - Supply Chain Risk Analyzer
-Main Streamlit Application
-"""
-
 import streamlit as st
 import pandas as pd
-import numpy as np
 import networkx as nx
-import plotly.express as px
-import plotly.graph_objects as go
-from pathlib import Path
+from pyvis.network import Network
+import google.generativeai as genai
 import tempfile
 import os
-from typing import Dict, List, Tuple, Optional
+import json
+import random
+import numpy as np
+import streamlit.components.v1 as components
 
-# Import custom modules
-from data_processor import SupplyChainData
-from graph_analyzer import GraphAnalyzer
-from visualizer import SupplyChainVisualizer
-from advanced_risk_analyzer import AdvancedRiskAnalyzer
-
-# Page configuration
+# ==========================================
+# CONFIGURATION & SETUP
+# ==========================================
 st.set_page_config(
-    page_title="ChainSense - Supply Chain Risk Analyzer",
+    page_title="ChainSense | Pro Supply Chain Dashboard",
     page_icon="🔗",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better styling
+# Custom CSS for Professional Dark UI
 st.markdown("""
 <style>
-    /* Main theme colors */
-    :root {
-        --primary-color: #1f77b4;
-        --secondary-color: #ff7f0e;
-        --success-color: #2ca02c;
-        --warning-color: #d62728;
-        --background-color: #f8f9fa;
-        --card-background: #ffffff;
-        --text-color: #2c3e50;
-        --border-color: #e1e5e9;
+    /* Global Styling */
+    .main {
+        background-color: #0e1117;
+        color: #fafafa;
+    }
+    .stApp {
+        background-color: #0e1117;
+        color: #fafafa;
     }
     
-    /* Hide Streamlit default elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Custom header styling */
-    .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem 1rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
-        text-align: center;
-        color: white;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    }
-    
-    .main-header h1 {
-        font-size: 3.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    .main-header p {
-        font-size: 1.3rem;
-        opacity: 0.9;
-        margin-bottom: 0;
-        font-weight: 300;
-    }
-    
-    /* Card styling */
-    .metric-card {
-        background: var(--card-background);
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-        margin-bottom: 1rem;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-    }
-    
-    /* Risk level styling */
-    .risk-critical {
-        background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-        color: white;
-        padding: 1rem;
+    /* Metrics Cards */
+    div[data-testid="stMetric"] {
+        background-color: #262730;
+        padding: 15px;
         border-radius: 10px;
-        border-left: 5px solid #d63031;
-        margin: 1rem 0;
-        box-shadow: 0 4px 15px rgba(214, 48, 49, 0.3);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        border-left: 5px solid #4da6ff;
+    }
+    div[data-testid="stMetric"] > div {
+        color: #fafafa !important;
+    }
+    p[data-testid="stMetricLabel"] {
+        color: #b0b0b0 !important;
     }
     
-    .risk-high {
-        background: linear-gradient(135deg, #fd79a8, #e84393);
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 5px solid #d63031;
-        margin: 1rem 0;
-        box-shadow: 0 4px 15px rgba(253, 121, 168, 0.3);
+    /* Headers */
+    h1, h2, h3 {
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        color: #fafafa !important;
     }
     
-    .risk-medium {
-        background: linear-gradient(135deg, #fdcb6e, #f39c12);
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 5px solid #e17055;
-        margin: 1rem 0;
-        box-shadow: 0 4px 15px rgba(253, 203, 110, 0.3);
-    }
-    
-    .risk-low {
-        background: linear-gradient(135deg, #55efc4, #00b894);
-        color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 5px solid #00cec9;
-        margin: 1rem 0;
-        box-shadow: 0 4px 15px rgba(85, 239, 196, 0.3);
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.7rem 2rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-    }
-    
-    /* Sidebar styling */
-    .css-1d391kg {
-        background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        background: var(--card-background);
-        border-radius: 12px;
-        padding: 0.5rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        gap: 8px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 1rem 1.5rem;
-        font-weight: 600;
-        color: #2c3e50 !important;
-        transition: all 0.2s ease;
-    }
-    
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white !important;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(102, 126, 234, 0.1);
-        color: #1f77b4 !important;
-    }
-    
-    /* Success/Info/Warning/Error styling */
-    .stSuccess {
-        background: linear-gradient(135deg, #00b894, #55efc4);
-        border: none;
-        border-radius: 10px;
-        color: white;
-    }
-    
-    .stInfo {
-        background: linear-gradient(135deg, #74b9ff, #0984e3);
-        border: none;
-        border-radius: 10px;
-        color: white;
-    }
-    
-    .stWarning {
-        background: linear-gradient(135deg, #fdcb6e, #f39c12);
-        border: none;
-        border-radius: 10px;
-        color: white;
-    }
-    
-    .stError {
-        background: linear-gradient(135deg, #fd79a8, #e84393);
-        border: none;
-        border-radius: 10px;
-        color: white;
-    }
-    
-    /* Feature highlight boxes */
-    .feature-box {
-        background: var(--card-background);
+    /* Custom Container */
+    .stContainer {
+        background-color: #262730;
         padding: 2rem;
-        border-radius: 15px;
-        border: 1px solid var(--border-color);
-        text-align: center;
-        transition: all 0.3s ease;
-        height: 100%;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        border: 1px solid #303030;
     }
     
-    .feature-box:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 20px;
+        background-color: #262730;
+        padding: 10px 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-    
-    .feature-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        color: var(--primary-color);
-    }
-    
-    /* Welcome screen styling */
-    .welcome-container {
-        background: var(--card-background);
-        padding: 3rem;
-        border-radius: 20px;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-    }
-    
-    /* Stats cards */
-    .stats-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-    }
-    
-    .stats-number {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-    
-    .stats-label {
-        font-size: 0.9rem;
-        opacity: 0.9;
-    }
-    
-    /* Progress indicator */
-    .progress-step {
-        display: inline-block;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        color: white;
-        text-align: center;
-        line-height: 30px;
-        margin-right: 10px;
-        font-weight: bold;
-    }
-    
-    .progress-step.completed {
-        background: var(--success-color);
-    }
-    
-    .progress-step.current {
-        background: var(--warning-color);
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-        100% { transform: scale(1); }
-    }
-    
-    /* Loading animation */
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid var(--primary-color);
-        border-radius: 50%;
-        width: 50px;
+    .stTabs [data-baseweb="tab"] {
         height: 50px;
-        animation: spin 1s linear infinite;
-        margin: 20px auto;
+        white-space: pre-wrap;
+        background-color: #262730;
+        border-radius: 5px;
+        color: #b0b0b0;
+        font-weight: 600;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #303030;
+        color: #ffffff;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #0e1117;
+        color: #4da6ff;
+        border-bottom: 2px solid #4da6ff;
     }
     
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    /* Responsive design */
-    @media (max-width: 768px) {
-        .main-header h1 {
-            font-size: 2.5rem;
-        }
-        
-        .main-header p {
-            font-size: 1.1rem;
-        }
+    /* Multiselect & Inputs */
+    .stMultiSelect > div > div > div {
+        background-color: #262730;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
 
-def initialize_session_state():
-    """Initialize session state variables"""
-    if 'data_processor' not in st.session_state:
-        st.session_state.data_processor = SupplyChainData()
-    if 'analyzer' not in st.session_state:
-        st.session_state.analyzer = None
-    if 'visualizer' not in st.session_state:
-        st.session_state.visualizer = None
-    if 'advanced_analyzer' not in st.session_state:
-        st.session_state.advanced_analyzer = None
-    if 'data_loaded' not in st.session_state:
-        st.session_state.data_loaded = False
-    if 'analysis_complete' not in st.session_state:
-        st.session_state.analysis_complete = False
-    if 'show_mapping' not in st.session_state:
-        st.session_state.show_mapping = False
+# ==========================================
+# DATA LOADING & CACHING
+# ==========================================
+@st.cache_data
+def load_data(file_input=None):
+    try:
+        if file_input is not None:
+            df = pd.read_csv(file_input)
+        else:
+            # Load default synthetic data
+            df = pd.read_csv("chainsense_synthetic_data.csv")
+        
+        # Ensure column types
+        if 'Order_Date' in df.columns:
+            df['Order_Date'] = pd.to_datetime(df['Order_Date'])
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None
 
+def validate_data(df):
+    """Check if uploaded data has required columns"""
+    required_columns = [
+        'Vendor_Name', 'Delivery_Status', 'Risk_Score', 
+        'Order_ID', 'Customer_Location', 'Quantity', 'Shipping_Cost', 
+        'Actual_Shipping_Days'
+    ]
+    
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    
+    if missing_cols:
+        return False, f"Missing required columns: {', '.join(missing_cols)}"
+    return True, "Data is valid"
+
+# ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+def calculate_kpis(df):
+    total_orders = len(df)
+    
+    # On-Time Performance
+    on_time_orders = len(df[df['Delivery_Status'] == 'On Time'])
+    on_time_pct = (on_time_orders / total_orders) * 100 if total_orders > 0 else 0
+    
+    # Critical Vendors (Risk Score > 75)
+    high_risk_vendors = df[df['Risk_Score'] > 75]['Vendor_Name'].nunique()
+    
+    # Avg Shipping Cost
+    avg_cost = df['Shipping_Cost'].mean()
+    
+    return total_orders, on_time_pct, high_risk_vendors, avg_cost
+
+def get_gemini_analysis(summary_text):
+    """Call Gemini API for intelligence briefing"""
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key:
+            return "⚠️ API Key not found. Please set GEMINI_API_KEY in secrets.toml."
+            
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = f"""
+        Kamu adalah Konsultan Logistik Senior. Berdasarkan ringkasan data berikut, berikan 3 rekomendasi taktis singkat dan actionable untuk manajer gudang.
+        Fokus pada mitigasi risiko dan efisiensi biaya.
+        
+        Data Summary:
+        {summary_text}
+        
+        Output format:
+        1. **[Judul Rekomendasi 1]**: [Penjelasan singkat]
+        2. **[Judul Rekomendasi 2]**: [Penjelasan singkat]
+        3. **[Judul Rekomendasi 3]**: [Penjelasan singkat]
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"❌ AI Analysis Failed: {str(e)}"
+
+def smart_map_columns(df, api_key):
+    """
+    Use Gemini AI to map user columns to ChainSense standard schema.
+    """
+    TARGET_SCHEMA = {
+        'Vendor_Name': 'Name of the supplier/vendor',
+        'Customer_Location': 'Destination city/location',
+        'Order_Date': 'Date of order/transaction',
+        'Delivery_Status': 'Status (Late, On Time, etc)',
+        'Risk_Score': 'Numerical risk value (0-100)',
+        'Order_ID': 'Unique identifier for the order',
+        'Quantity': 'Number of items',
+        'Shipping_Cost': 'Cost of shipping',
+        'Actual_Shipping_Days': 'Number of days taken to ship',
+        'Product_Category': 'Category of product' # Added for better mapping if available
+    }
+    
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        user_columns = list(df.columns)
+        
+        prompt = f"""
+        You are a Data Engineering Expert. Map the user's column names to the target standard schema.
+        
+        Target Schema (Standard): {json.dumps(TARGET_SCHEMA)}
+        User Columns (Input): {json.dumps(user_columns)}
+        
+        Instructions:
+        1. Analyze the semantic meaning of User Columns.
+        2. Map them to the keys in Target Schema.
+        3. Only include mappings where you are confident.
+        4. Return ONLY a valid JSON object where keys are User Columns and values are Target Schema keys.
+        5. DO NOT wrap the output in markdown code blocks (like ```json). Just the raw JSON string.
+        """
+        
+        response = model.generate_content(prompt)
+        text_response = response.text.replace("```json", "").replace("```", "").strip()
+        
+        mapping = json.loads(text_response)
+        return mapping
+        
+    except Exception as e:
+        st.error(f"AI Mapping Failed: {str(e)}")
+        return {}
+
+def ensure_critical_columns(df):
+    """
+    Polyfill missing critical columns with synthetic data if possible.
+    Returns: df, was_modified, modifications_list
+    """
+    modified = False
+    modifications = []
+    
+    # 1. Actual_Shipping_Days
+    if 'Actual_Shipping_Days' not in df.columns:
+        if 'Delivery_Status' in df.columns:
+            # Generate based on status
+            def est_days(status):
+                if status == 'Late': return random.randint(7, 15)
+                if status == 'On Time': return random.randint(2, 6)
+                return random.randint(3, 10)
+            
+            df['Actual_Shipping_Days'] = df['Delivery_Status'].apply(est_days)
+            modifications.append("Generated 'Actual_Shipping_Days' based on 'Delivery_Status'")
+            modified = True
+        else:
+            # Random default
+            df['Actual_Shipping_Days'] = np.random.randint(1, 10, size=len(df))
+            modifications.append("Generated random 'Actual_Shipping_Days'")
+            modified = True
+
+    # 2. Risk_Score
+    if 'Risk_Score' not in df.columns:
+        df['Risk_Score'] = np.random.randint(0, 50, size=len(df))
+        modifications.append("Generated random 'Risk_Score'")
+        modified = True
+        
+    return df, modified, modifications
+
+# ==========================================
+# MAIN APP
+# ==========================================
 def main():
-    """Main application function"""
-    initialize_session_state()
-    
-    # Initialize default values for layout options
-    layout_option = "spring"
-    size_metric = "degree_centrality"
-    analysis_level = "Level 1 (Basic)"
-    
-    # Header
-    st.markdown("""
-    <div class="main-header">
-        <h1>🔗 ChainSense</h1>
-        <p>AI-powered Supply Chain Risk Analyzer</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Sidebar for navigation and controls
+    # Sidebar for Data Input
     with st.sidebar:
-        st.markdown("""
-        <div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; color: white; margin-bottom: 2rem;">
-            <h2 style="margin: 0;">🎛️ Control Panel</h2>
-            <p style="margin: 0; opacity: 0.8;">Configure your analysis</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.header("📂 Data Config")
         
-        # Progress indicator
-        progress_steps = [
-            ("📁", "Upload Data", st.session_state.data_loaded),
-            ("⚙️", "Configure", st.session_state.data_loaded),
-            ("🚀", "Analyze", st.session_state.analysis_complete)
-        ]
-        
-        st.markdown("**📋 Progress**")
-        progress_html = ""
-        for icon, step, completed in progress_steps:
-            status_class = "completed" if completed else "current" if step == "Configure" and st.session_state.data_loaded else ""
-            progress_html += f"""
-            <div style="margin: 0.5rem 0; display: flex; align-items: center;">
-                <span class="progress-step {status_class}">{icon}</span>
-                <span style="margin-left: 10px; {'color: #2ca02c; font-weight: bold;' if completed else ''}">{step}</span>
-                {'✅' if completed else '' if not status_class else '⏳'}
-            </div>
-            """
-        
-        st.markdown(progress_html, unsafe_allow_html=True)
+        # Template Download
+        try:
+            with open("chainsense_synthetic_data.csv", "rb") as f:
+                st.download_button(
+                    label="📥 Download Template",
+                    data=f,
+                    file_name="chainsense_template_data.csv",
+                    mime="text/csv",
+                    help="Use this template to format your data"
+                )
+        except FileNotFoundError:
+            st.warning("Template file not found.")
+            
         st.markdown("---")
         
-        # Data upload section
-        st.subheader("📁 Data Upload")
-        
-        # Initialize variables
-        uploaded_file = None
-        uploaded_files = []
-        
-        # Option to upload single or multiple files
-        upload_option = st.radio(
-            "Upload Options",
-            ["Single File", "Multiple Files"],
-            horizontal=True,
-            help="Choose to upload a single file or multiple files to combine"
+        # File Uploader
+        uploaded_file = st.file_uploader(
+            "Upload Data (CSV)",
+            type=["csv"],
+            help="Upload your own supply chain dataset"
         )
         
-        if upload_option == "Single File":
-            uploaded_file = st.file_uploader(
-                "Choose a CSV or Excel file",
-                type=["csv", "xlsx", "xls"],
-                help="Upload a CSV or Excel file with supply chain data. Supported formats: CSV, XLSX, XLS"
-            )
-            
-            # Process single uploaded file
-            if uploaded_file is not None:
-                if st.button("🚀 Process File", use_container_width=True):
-                    if st.session_state.data_processor.load_csv(uploaded_file):
-                        st.success("📁 File loaded successfully!")
-                        
-                        # Try automatic relationship detection
-                        with st.spinner("🔍 Analyzing data structure..."):
-                            if st.session_state.data_processor.auto_detect_relationships():
-                                st.session_state.data_loaded = True
-                                st.success("✨ Supply chain relationships detected automatically!")
-                                st.rerun()
-                            else:
-                                # Show manual mapping interface
-                                st.warning("Could not auto-detect relationships. Please use manual mapping below.")
-                                st.session_state.show_mapping = True
-                                st.rerun()
+        if uploaded_file:
+            st.success("Custom data loaded!")
         else:
-            # Multiple file upload
-            uploaded_files = st.file_uploader(
-                "Choose multiple CSV or Excel files",
-                type=["csv", "xlsx", "xls"],
-                accept_multiple_files=True,
-                help="Upload multiple CSV or Excel files to combine into a single supply chain analysis"
-            )
-            
-            # Process multiple uploaded files
-            if uploaded_files and len(uploaded_files) > 0:
-                if st.button("🚀 Process Files", use_container_width=True):
-                    if st.session_state.data_processor.load_multiple_files(uploaded_files):
-                        st.success(f"📁 {len(uploaded_files)} files loaded successfully!")
-                        
-                        # Try automatic relationship detection
-                        with st.spinner("🔍 Analyzing combined data structure..."):
-                            if st.session_state.data_processor.auto_detect_relationships():
-                                st.session_state.data_loaded = True
-                                st.success("✨ Supply chain relationships detected automatically from combined data!")
-                                st.rerun()
-                            else:
-                                # Show manual mapping interface
-                                st.warning("Could not auto-detect relationships. Please use manual mapping below.")
-                                st.session_state.show_mapping = True
-                                st.rerun()
-        
-        # Sample data option
-        if st.button("📊 Load Sample Data"):
-            sample_df = st.session_state.data_processor.create_sample_data()
-            st.session_state.data_processor.df = sample_df
-            st.session_state.data_loaded = True
-            st.success("Sample data loaded successfully!")
-        
-        # Process uploaded file
-        if uploaded_file is not None:
-            if st.button("🚀 Process File", use_container_width=True):
-                if st.session_state.data_processor.load_csv(uploaded_file):
-                    st.success("📁 File loaded successfully!")
-                    
-                    # Try automatic relationship detection
-                    with st.spinner("🔍 Analyzing data structure..."):
-                        if st.session_state.data_processor.auto_detect_relationships():
-                            st.session_state.data_loaded = True
-                            st.success("✨ Supply chain relationships detected automatically!")
-                            st.rerun()
-                        else:
-                            # Show manual mapping interface
-                            st.warning("Could not auto-detect relationships. Please use manual mapping below.")
-                            st.session_state.show_mapping = True
-                            st.rerun()
-        
-        # Analysis options
-        if st.session_state.data_loaded:
-            st.subheader("⚙️ Analysis Options")
-            
-            # Initialize default values
-            layout_option = "spring"
-            size_metric = "degree_centrality"
-            analysis_level = "Level 1 (Basic)"
-            
-            # Graph layout options
-            layout_option = st.selectbox(
-                "Graph Layout",
-                ["spring", "hierarchical", "circular"],
-                help="Choose the layout algorithm for graph visualization. Note: hierarchical layout works best with directed acyclic graphs"
-            )
-            
-            # Node size metric
-            size_metric = st.selectbox(
-                "Node Size Based On",
-                ["degree_centrality", "betweenness_centrality", "pagerank", "degree", "risk_score"],
-                help="Choose the metric to determine node sizes"
-            )
-            
-            # Analysis level
-            analysis_level = st.selectbox(
-                "Analysis Level",
-                ["Level 1 (Basic)", "Level 2 (Advanced)"],
-                help="Choose the depth of analysis"
-            )
-            
-            # Run analysis button
-            if st.button("🚀 Run Analysis", type="primary"):
-                run_analysis(analysis_level)
-    
-    # Main content area with tabs
-    # Initialize default values for layout options
-    layout_option = "spring"
-    size_metric = "degree_centrality"
-    
-    if st.session_state.data_loaded:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Overview", "🕸️ Graph Visualization", "📈 Risk Metrics", "🔍 Advanced Analysis", "🛡️ Scenario Planning"])
-        
-        with tab1:
-            show_data_overview()
-        
-        with tab2:
-            show_graph_visualization(layout_option, size_metric)
-        
-        with tab3:
-            show_risk_metrics()
-        
-        with tab4:
-            show_advanced_analysis()
-        
-        with tab5:
-            show_scenario_planning()
-    
-    elif st.session_state.show_mapping:
-        # Show column mapping interface
-        show_smart_column_mapping()
-    
-    else:
-        # Welcome screen
-        show_welcome_screen()
+            st.info("Using default dataset")
 
-def run_analysis(analysis_level):
-    """Run the supply chain analysis"""
-    with st.spinner("🔄 Running analysis..."):
-        try:
-            # Validate and build graph
-            is_valid, message = st.session_state.data_processor.validate_data()
-            if not is_valid:
-                st.error(f"Data validation failed: {message}")
-                return
-            
-            st.success(message)
-            
-            # Build graph
-            if not st.session_state.data_processor.build_graph():
-                st.error("Failed to build graph from data")
-                return
-            
-            # Initialize analyzer
-            st.session_state.analyzer = GraphAnalyzer(
-                st.session_state.data_processor.graph,
-                st.session_state.data_processor.node_types
-            )
-            
-            # Calculate metrics
-            st.session_state.analyzer.calculate_basic_metrics()
-            
-            if analysis_level == "Level 2 (Advanced)":
-                # Advanced analysis
-                st.session_state.analyzer.calculate_risk_scores()
-                st.session_state.analyzer.detect_communities()
-                st.session_state.analyzer.detect_anomalies()
-                
-                # Initialize advanced analyzer
-                st.session_state.advanced_analyzer = AdvancedRiskAnalyzer(
-                    st.session_state.data_processor.graph,
-                    st.session_state.data_processor.node_types,
-                    st.session_state.analyzer.metrics
-                )
-                st.session_state.advanced_analyzer.calculate_advanced_risk_scores()
-            
-            # Initialize visualizer
-            st.session_state.visualizer = SupplyChainVisualizer(
-                st.session_state.data_processor.graph,
-                st.session_state.data_processor.node_types,
-                st.session_state.analyzer.metrics,
-                st.session_state.analyzer.risk_scores
-            )
-            
-            st.session_state.analysis_complete = True
-            st.success("✅ Analysis completed successfully!")
-            
-        except Exception as e:
-            st.error(f"Analysis failed: {str(e)}")
-
-def show_smart_column_mapping():
-    """Show intelligent column mapping interface for any dataset"""
-    st.header("🔄 Smart Data Mapping")
+    # Load Data (Dynamic)
+    df = load_data(uploaded_file)
     
-    st.info("""
-    🤖 **Smart Detection**: ChainSense will help you create supply chain relationships from your data.
-    Choose how you want to model your supply chain network.
-    """)
-    
-    # Show data preview
-    st.subheader("👀 Your Data Preview")
-    st.dataframe(st.session_state.data_processor.df.head(10), use_container_width=True)
-    
-    # Available columns
-    available_cols = list(st.session_state.data_processor.df.columns)
-    
-    st.subheader("🎯 Choose Your Mapping Strategy")
-    
-    strategy = st.radio(
-        "How would you like to create supply chain relationships?",
-        [
-            "🏭 Supplier → Geographic Markets",
-            "📦 Supplier → Product Categories", 
-            "🔄 Custom Two-Column Mapping",
-            "🎯 Smart Auto-Detection"
-        ]
-    )
-    
-    if strategy == "🏭 Supplier → Geographic Markets":
-        col1, col2 = st.columns(2)
+    if df is None:
+        return 
         
-        with col1:
-            supplier_col = st.selectbox(
-                "Select Supplier Column:",
-                available_cols,
-                index=next((i for i, col in enumerate(available_cols) if 'supplier' in col.lower()), 0)
-            )
-        
-        with col2:
-            location_cols = [col for col in available_cols if any(keyword in col.lower() for keyword in ['location', 'region', 'city', 'country', 'area'])]
-            location_col = st.selectbox(
-                "Select Location/Market Column:",
-                location_cols if location_cols else available_cols,
-                index=0
-            )
-        
-        if st.button("⚙️ Create Geographic Relationships", type="primary"):
-            create_geographic_relationships(supplier_col, location_col)
-    
-    elif strategy == "📦 Supplier → Product Categories":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            supplier_col = st.selectbox(
-                "Select Supplier Column:",
-                available_cols,
-                index=next((i for i, col in enumerate(available_cols) if 'supplier' in col.lower()), 0)
-            )
-        
-        with col2:
-            product_cols = [col for col in available_cols if any(keyword in col.lower() for keyword in ['product', 'category', 'type', 'item'])]
-            product_col = st.selectbox(
-                "Select Product/Category Column:",
-                product_cols if product_cols else available_cols,
-                index=0
-            )
-        
-        if st.button("⚙️ Create Product Relationships", type="primary"):
-            create_product_relationships(supplier_col, product_col)
-    
-    elif strategy == "🔄 Custom Two-Column Mapping":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            source_col = st.selectbox(
-                "Select Source/Supplier Column:",
-                available_cols
-            )
-        
-        with col2:
-            target_col = st.selectbox(
-                "Select Target/Customer Column:",
-                [col for col in available_cols if col != source_col]
-            )
-        
-        if st.button("⚙️ Create Custom Relationships", type="primary"):
-            create_custom_relationships(source_col, target_col)
-    
-    elif strategy == "🎯 Smart Auto-Detection":
-        st.info("""
-        🤖 **Auto-Detection** will analyze your data and create the most logical supply chain relationships 
-        based on data patterns, column names, and value distributions.
-        """)
-        
-        if st.button("🔍 Run Smart Auto-Detection", type="primary"):
-            run_smart_auto_detection()
-    
-    # Cancel option
-    if st.button("❌ Cancel and Upload Different File"):
-        st.session_state.show_mapping = False
-        st.session_state.data_processor.df = None
-        st.rerun()
-
-def create_geographic_relationships(supplier_col: str, location_col: str):
-    """Create supplier to geographic market relationships"""
-    try:
-        relationships = []
-        for _, row in st.session_state.data_processor.df.iterrows():
-            supplier = str(row.get(supplier_col, '')).strip()
-            location = str(row.get(location_col, '')).strip()
-            
-            if supplier and location and supplier.lower() not in ['nan', '', 'null'] and location.lower() not in ['nan', '', 'null']:
-                relationships.append({
-                    'supplier': supplier,
-                    'customer': f"Market_{location}"
-                })
-        
-        if relationships:
-            new_df = pd.DataFrame(relationships).drop_duplicates()
-            st.session_state.data_processor.df = new_df
-            st.session_state.data_loaded = True
-            st.session_state.show_mapping = False
-            st.success(f"✨ Created {len(new_df)} geographic relationships successfully!")
-            st.rerun()
-        else:
-            st.error("No valid relationships could be created. Please check your data.")
-    except Exception as e:
-        st.error(f"Error creating relationships: {str(e)}")
-
-def create_product_relationships(supplier_col: str, product_col: str):
-    """Create supplier to product category relationships"""
-    try:
-        relationships = []
-        for _, row in st.session_state.data_processor.df.iterrows():
-            supplier = str(row.get(supplier_col, '')).strip()
-            product = str(row.get(product_col, '')).strip()
-            
-            if supplier and product and supplier.lower() not in ['nan', '', 'null'] and product.lower() not in ['nan', '', 'null']:
-                relationships.append({
-                    'supplier': supplier,
-                    'customer': f"ProductLine_{product}"
-                })
-        
-        if relationships:
-            new_df = pd.DataFrame(relationships).drop_duplicates()
-            st.session_state.data_processor.df = new_df
-            st.session_state.data_loaded = True
-            st.session_state.show_mapping = False
-            st.success(f"✨ Created {len(new_df)} product relationships successfully!")
-            st.rerun()
-        else:
-            st.error("No valid relationships could be created. Please check your data.")
-    except Exception as e:
-        st.error(f"Error creating relationships: {str(e)}")
-
-def create_custom_relationships(source_col: str, target_col: str):
-    """Create custom two-column relationships"""
-    try:
-        relationships = []
-        for _, row in st.session_state.data_processor.df.iterrows():
-            source = str(row.get(source_col, '')).strip()
-            target = str(row.get(target_col, '')).strip()
-            
-            if (source and target and 
-                source.lower() not in ['nan', '', 'null'] and 
-                target.lower() not in ['nan', '', 'null'] and 
-                source != target):
-                relationships.append({
-                    'supplier': source,
-                    'customer': target
-                })
-        
-        if relationships:
-            new_df = pd.DataFrame(relationships).drop_duplicates()
-            st.session_state.data_processor.df = new_df
-            st.session_state.data_loaded = True
-            st.session_state.show_mapping = False
-            st.success(f"✨ Created {len(new_df)} custom relationships successfully!")
-            st.rerun()
-        else:
-            st.error("No valid relationships could be created. Please check your data and ensure the columns have different values.")
-    except Exception as e:
-        st.error(f"Error creating relationships: {str(e)}")
-
-def run_smart_auto_detection():
-    """Run intelligent auto-detection"""
-    with st.spinner("🔍 Running smart analysis..."):
-        if st.session_state.data_processor.auto_detect_relationships():
-            st.session_state.data_loaded = True
-            st.session_state.show_mapping = False
-            st.success("✨ Smart auto-detection created supply chain relationships successfully!")
-            st.rerun()
-        else:
-            st.error("🙁 Auto-detection could not find suitable relationships. Please try manual mapping.")
-
-def show_welcome_screen():
-    """Show welcome screen with instructions"""
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.markdown("""
-        ## 🎯 Welcome to ChainSense!
-        
-        **ChainSense** is an AI-powered supply chain risk analyzer that helps you:
-        
-        ### 📊 Level 1 - Exploratory Dashboard
-        - Upload and analyze supply chain datasets
-        - Visualize supply chain networks interactively
-        - Calculate basic graph metrics (centrality, clustering)
-        - Identify critical nodes and bottlenecks
-        
-        ### 🎯 Level 2 - Advanced Risk Analysis
-        - Calculate risk scores for suppliers and customers
-        - Detect communities and clusters in your network
-        - Identify anomalous nodes and relationships
-        - Generate comprehensive risk assessments
-        
-        ### 🚀 Getting Started
-        
-        1. **Upload Data**: Use the sidebar to upload a CSV file with your supply chain data
-        2. **Required Columns**: `supplier` and `customer` (case-insensitive)
-        3. **Optional Columns**: `product`, `quantity`, `price`, `date`
-        4. **Or Try Sample Data**: Click "Load Sample Data" to explore with example data
-        
-        ### 📋 Data Format Example
-        ```
-        supplier,customer,product,quantity
-        Supplier_A,Distributor_X,Product_Alpha,500
-        Distributor_X,Retailer_1,Product_Alpha,100
-        ```
-        """)
-        
-        # Add feature highlights
-        st.markdown("""
-        ### ✨ Key Features
-        """)
-        
-        feature_col1, feature_col2 = st.columns(2)
-        
-        with feature_col1:
-            st.info("""
-            **🔍 Graph Analytics**
-            - Node centrality analysis
-            - Bottleneck identification
-            - Network connectivity analysis
-            - Community detection
-            """)
-        
-        with feature_col2:
-            st.info("""
-            **⚠️ Risk Assessment**
-            - Automated risk scoring
-            - Anomaly detection
-            - Vulnerability analysis
-            - Interactive visualizations
-            """)
-
-def show_data_overview():
-    """Show data overview tab"""
-    if st.session_state.data_processor.df is None:
-        st.warning("No data loaded. Please upload a CSV file or load sample data.")
+    if df.empty:
+        st.warning("Data is empty. Please check your file.")
         return
+        
+    # Validate Data
+    is_valid, validation_msg = validate_data(df)
     
-    st.header("📊 Data Overview")
-    
-    # Data summary with enhanced styling
-    data_summary = st.session_state.data_processor.get_data_summary()
-    
-    # Handle case where data_summary might be None or empty
-    if not data_summary:
-        data_summary = {
-            'total_rows': 0,
-            'unique_suppliers': 0,
-            'unique_customers': 0,
-            'columns': []
-        }
-    
-    st.markdown("""
-    <div style="margin: 2rem 0;">
-        <h3 style="color: #1f77b4; margin-bottom: 1rem;">📊 Key Metrics</h3>
-    </div>
-    """, unsafe_allow_html=True)
+    if not is_valid:
+        st.warning("⚠️ Column mismatch detected. Attempting AI Semantic Mapping...")
+        
+        # Check for API Key
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key:
+            st.error("❌ Data Validation Failed & API Key Missing for AI Fix.\n\n" + validation_msg)
+            return
+
+        # Trigger AI Mapping
+        with st.spinner("🤖 AI is analyzing column semantics..."):
+            mapping = smart_map_columns(df, api_key)
+        
+        if mapping:
+            st.success("✨ AI Mapping Generated!")
+            with st.expander("View Column Mapping"):
+                st.json(mapping)
+            
+            # Apply mapping (invert mapping because rename takes {old: new})
+            # The AI was asked for {old: new} based on prompt "keys are User Columns"
+            # Let's verify prompt: "keys are User Columns and values are Target Schema keys" -> {Old: New} -> Correct for rename
+            
+            try:
+                df = df.rename(columns=mapping)
+                st.info("✅ Columns renamed successfully.")
+                
+                # POLYFILL: Attempt to fill missing critical data
+                df, modified, mods = ensure_critical_columns(df)
+                if modified:
+                    st.warning("⚠️ Some columns were still missing. Synthetic values generated:")
+                    for m in mods:
+                        st.write(f"- {m}")
+
+                # Re-validate
+                is_valid_2, validation_msg_2 = validate_data(df)
+                if not is_valid_2:
+                    st.error(f"❌ Critical data still missing: {validation_msg_2}")
+                    return
+            except Exception as e:
+                st.error(f"Error applying mapping: {e}")
+                return
+        else:
+            st.error("❌ AI could not determine a valid mapping.")
+            st.code(validation_msg)
+            return
+
+    # Title Section
+    st.title("🔗 ChainSense Executive Dashboard")
+    st.markdown("Supply Chain Risk Monitoring & Intelligence System")
+    st.markdown("---")
+
+    # ---------------------------------------------------------
+    # LAYER 1: KPI CARDS
+    # ---------------------------------------------------------
+    total_orders, on_time_pct, critical_vendors, avg_cost = calculate_kpis(df)
     
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
-        st.markdown("""
-        <div class="stats-card">
-            <div class="stats-number">{}</div>
-            <div class="stats-label">Total Records</div>
-        </div>
-        """.format(data_summary.get('total_rows', 0)), unsafe_allow_html=True)
-    
+        st.metric("Total Orders", f"{total_orders:,}", delta="Orders processed")
     with col2:
-        st.markdown("""
-        <div class="stats-card">
-            <div class="stats-number">{}</div>
-            <div class="stats-label">Unique Suppliers</div>
-        </div>
-        """.format(data_summary.get('unique_suppliers', 0)), unsafe_allow_html=True)
-    
+        st.metric("On-Time Performance", f"{on_time_pct:.1f}%", delta=f"{100-on_time_pct:.1f}% Late/Issues", delta_color="inverse")
     with col3:
-        st.markdown("""
-        <div class="stats-card">
-            <div class="stats-number">{}</div>
-            <div class="stats-label">Unique Customers</div>
-        </div>
-        """.format(data_summary.get('unique_customers', 0)), unsafe_allow_html=True)
-    
+        st.metric("Critical Vendors", f"{critical_vendors}", delta="Risk Score > 75", delta_color="inverse")
     with col4:
-        total_entities = data_summary.get('unique_suppliers', 0) + data_summary.get('unique_customers', 0)
-        st.markdown("""
-        <div class="stats-card">
-            <div class="stats-number">{}</div>
-            <div class="stats-label">Total Entities</div>
-        </div>
-        """.format(total_entities), unsafe_allow_html=True)
-    
-    # Display data table
-    st.subheader("📋 Raw Data")
-    
-    # Data filtering options
-    col1, col2 = st.columns(2)
-    
-    # Initialize filter variables
-    suppliers = []
-    customers = []
-    
-    with col1:
-        if 'supplier' in st.session_state.data_processor.df.columns:
-            suppliers = st.multiselect(
-                "Filter by Supplier",
-                st.session_state.data_processor.df['supplier'].unique()
-            )
-    
-    with col2:
-        if 'customer' in st.session_state.data_processor.df.columns:
-            customers = st.multiselect(
-                "Filter by Customer",
-                st.session_state.data_processor.df['customer'].unique()
-            )
-    
-    # Apply filters
-    filtered_df = st.session_state.data_processor.df.copy()
-    
-    if suppliers:
-        filtered_df = filtered_df[filtered_df['supplier'].isin(suppliers)]
-    
-    if customers:
-        filtered_df = filtered_df[filtered_df['customer'].isin(customers)]
-    
-    st.dataframe(filtered_df, use_container_width=True)
-    
-    # Data statistics
-    if st.session_state.analysis_complete:
-        st.subheader("📈 Graph Statistics")
-        graph_summary = st.session_state.data_processor.get_graph_summary()
+        st.metric("Avg Shipping Cost", f"Rp {avg_cost:,.0f}", delta="Per Order")
+
+    st.markdown("###")
+
+    # ---------------------------------------------------------
+    # LAYER 2: AI INTELLIGENCE
+    # ---------------------------------------------------------
+    with st.container(border=True):
+        st.subheader("🤖 ChainSense Intelligence Briefing")
         
-        # Handle case where graph_summary might be None or empty
-        if not graph_summary:
-            graph_summary = {
-                'total_nodes': 0,
-                'total_edges': 0,
-                'density': 0.0,
-                'connected_components': 0,
-                'is_connected': False,
-                'node_types': {}
-            }
+        col_ai_btn, col_ai_content = st.columns([1, 4])
         
-        col1, col2, col3 = st.columns(3)
+        analysis_result = st.empty()
         
-        with col1:
-            st.metric("Total Nodes", graph_summary.get('total_nodes', 0))
-            st.metric("Total Edges", graph_summary.get('total_edges', 0))
+        with col_ai_btn:
+            st.write("Generate AI-powered insights based on current risk metrics.")
+            if st.button("Generate AI Analysis", type="primary", use_container_width=True):
+                with col_ai_content:
+                    with st.spinner("Consulting AI Expert..."):
+                        # Prepare summary for AI
+                        summary = f"""
+                        Total Orders: {total_orders}
+                        On-Time Rate: {on_time_pct:.1f}%
+                        Critical Vendors Count: {critical_vendors}
+                        Average Shipping Cost: {avg_cost}
+                        Top High Risk Vendors: {', '.join(df[df['Risk_Score']>75]['Vendor_Name'].unique().tolist()[:5])}
+                        Average Risk Score: {df['Risk_Score'].mean():.1f}
+                        """
+                        insight = get_gemini_analysis(summary)
+                        analysis_result.markdown(insight)
         
-        with col2:
-            st.metric("Network Density", f"{graph_summary.get('density', 0):.3f}")
-            st.metric("Connected Components", graph_summary.get('connected_components', 0))
+        with col_ai_content:
+            if not analysis_result.text:
+                st.info("Click the button to generate a strategic briefing.")
+
+    st.markdown("###")
+
+    # ---------------------------------------------------------
+    # LAYER 3: DETAIL TABS
+    # ---------------------------------------------------------
+    tab1, tab2, tab3 = st.tabs(["🗺️ Peta Risiko (Graph)", "📋 Vendor Scorecard", "⚡ Simulasi Krisis"])
+
+    # === TAB 1: GRAPH VISUALIZATION ===
+    with tab1:
+        st.subheader("Supply Chain Network Visualization")
         
-        with col3:
-            is_connected = graph_summary.get('is_connected', False)
-            st.metric("Is Connected", "Yes" if is_connected else "No")
+        # Filter
+        selected_vendors = st.multiselect(
+            "Filter Vendor (Node)", 
+            options=df['Vendor_Name'].unique(),
+            default=None,
+            placeholder="Tampilkan semua vendor..."
+        )
         
-        # Node type distribution
-        if 'node_types' in graph_summary:
-            node_types = graph_summary['node_types']
+        # Prepare Graph Data
+        graph_df = df.copy()
+        if selected_vendors:
+            graph_df = graph_df[graph_df['Vendor_Name'].isin(selected_vendors)]
             
-            st.subheader("🏷️ Node Type Distribution")
+        # Create NetworkX Graph
+        G = nx.from_pandas_edgelist(graph_df, source='Vendor_Name', target='Customer_Location', edge_attr='Quantity')
+        
+        # Calculate Centrality Metrics (translated to business terms)
+        degree_centrality = nx.degree_centrality(G) # Aktivitas Gudang
+        betweenness_centrality = nx.betweenness_centrality(G) # Titik Rawan Macet
+        
+        # Pyvis Network - Dark Mode
+        net = Network(height="600px", width="100%", bgcolor="#262730", font_color="white")
+        
+        # Add nodes with custom attributes
+        for node in G.nodes():
+            # Determine if node is Vendor or Customer
+            is_vendor = node in df['Vendor_Name'].unique()
             
-            # Create pie chart
-            labels = []
-            values = []
-            colors = []
+            # Risk coloring for Vendors
+            color = "#97c2fc" # Default Blue
+            title = f"{node}"
             
-            color_map = {
-                'supplier': '#FF6B6B',
-                'customer': '#4ECDC4',
-                'intermediary': '#45B7D1',
-                'isolated': '#96CEB4'
-            }
-            
-            for node_type, count in node_types.items():
-                if count > 0:
-                    labels.append(node_type.title())
-                    values.append(count)
-                    colors.append(color_map.get(node_type, '#CCCCCC'))
-            
-            if values:
-                fig_pie = go.Figure(data=[go.Pie(
-                    labels=labels,
-                    values=values,
-                    marker_colors=colors,
-                    hole=0.4
-                )])
+            if is_vendor:
+                # Get max risk score for this vendor
+                vendor_risk = df[df['Vendor_Name'] == node]['Risk_Score'].max()
                 
-                fig_pie.update_layout(
-                    title="Node Type Distribution",
-                    height=400
+                if vendor_risk > 75:
+                    color = "#ff4d4d" # Red - Critical
+                elif vendor_risk >= 40:
+                    color = "#ffca28" # Yellow - Warning
+                else:
+                    color = "#00cc66" # Green - Safe
+                
+                # Business Metrics Tooltip
+                activity = degree_centrality.get(node, 0)
+                bottleneck = betweenness_centrality.get(node, 0)
+                title += f"\nRisiko: {vendor_risk:.1f}\nAktivitas Gudang: {activity:.2f}\nTitik Rawan Macet: {bottleneck:.2f}"
+                
+            net.add_node(node, label=node, title=title, color=color, size=20 if is_vendor else 10)
+
+        # Add edges
+        for u, v, data in G.edges(data=True):
+            net.add_edge(u, v, value=data['Quantity'])
+
+        # Physics options
+        net.barnes_hut()
+        
+        # Save and display
+        try:
+            path = ""
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
+                path = tmp_file.name
+            
+            # Save network to the temporary file
+            net.save_graph(path)
+            
+            # Read back the HTML
+            with open(path, 'r', encoding='utf-8') as f:
+                html_string = f.read()
+            
+            # Display
+            components.html(html_string, height=620)
+            
+        finally:
+            # Clean up
+            if path and os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
+            
+        st.caption("🔴 Merah: Risiko Tinggi (>75) | 🟡 Kuning: Risiko Sedang (40-75) | 🟢 Hijau: Aman (<40)")
+
+    # === TAB 2: VENDOR SCORECARD ===
+    with tab2:
+        st.subheader("Vendor Performance Scorecard")
+        
+        # Group by Vendor
+        scorecard = df.groupby('Vendor_Name').agg({
+            'Order_ID': 'count',
+            'Risk_Score': 'mean',
+            'Actual_Shipping_Days': 'mean',
+            'Delivery_Status': lambda x: pd.Series.mode(x)[0] if not pd.Series.mode(x).empty else 'Unknown'
+        }).reset_index()
+        
+        scorecard.columns = ['Vendor Name', 'Total Orders', 'Avg Risk Score', 'Avg Ship Time (Days)', 'Most Freq Status']
+        
+        st.dataframe(
+            scorecard,
+            column_config={
+                "Avg Risk Score": st.column_config.ProgressColumn(
+                    "Risk Level",
+                    help="Average Risk Score (0-100)",
+                    format="%.1f",
+                    min_value=0,
+                    max_value=100,
+                ),
+                "Most Freq Status": st.column_config.TextColumn(
+                    "Delivery Status",
+                    help="Most frequent delivery status",
+                    validate="^(On Time|Late|Damaged/Returned)$"
                 )
-                
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-def show_graph_visualization(layout_option, size_metric):
-    """Show graph visualization tab"""
-    if not st.session_state.analysis_complete:
-        st.warning("Please run analysis first to see graph visualization.")
-        return
-    
-    st.header("🕸️ Graph Visualization")
-    
-    # Visualization options
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        show_risk_colors = st.checkbox("Show Risk Colors", value=False)
-    
-    with col2:
-        graph_height = st.selectbox("Graph Height", ["400px", "600px", "800px"], index=1)
-    
-    with col3:
-        show_labels = st.checkbox("Show Node Labels", value=True)
-    
-    # Create interactive graph
-    try:
-        graph_file = st.session_state.visualizer.create_interactive_graph(
-            layout=layout_option,
-            node_size_metric=size_metric,
-            show_risk=show_risk_colors,
-            height=graph_height
+            },
+            hide_index=True,
+            use_container_width=True
         )
-        
-        if graph_file:
-            # Display the graph
-            with open(graph_file, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            st.components.v1.html(html_content, height=int(graph_height.replace('px', '')) + 50)
-            
-            # Clean up temporary file
-            os.unlink(graph_file)
-        
-    except Exception as e:
-        st.error(f"Error creating graph visualization: {str(e)}")
-    
-    # Network overview using plotly
-    st.subheader("📊 Network Overview")
-    
-    try:
-        overview_fig = st.session_state.visualizer.create_network_overview()
-        if overview_fig:
-            st.plotly_chart(overview_fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error creating network overview: {str(e)}")
 
-def show_risk_metrics():
-    """Show risk metrics tab"""
-    if not st.session_state.analysis_complete:
-        st.warning("Please run analysis first to see risk metrics.")
-        return
-    
-    st.header("📈 Risk Metrics")
-    
-    # Basic metrics
-    metrics = st.session_state.analyzer.metrics
-    
-    if metrics:
-        st.subheader("🎯 Centrality Analysis")
+    # === TAB 3: SIMULATION ===
+    with tab3:
+        col_sim_control, col_sim_result = st.columns([1, 2])
         
-        # Top nodes by different centralities
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**🔝 Top Nodes by Degree Centrality**")
-            top_degree = st.session_state.analyzer.get_top_nodes('degree_centrality', 10)
-            for i, (node, score) in enumerate(top_degree, 1):
-                node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
-                st.write(f"{i}. **{node}** ({node_type}): {score:.3f}")
-        
-        with col2:
-            st.markdown("**🔄 Top Nodes by Betweenness Centrality**")
-            top_betweenness = st.session_state.analyzer.get_top_nodes('betweenness_centrality', 10)
-            for i, (node, score) in enumerate(top_betweenness, 1):
-                node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
-                st.write(f"{i}. **{node}** ({node_type}): {score:.3f}")
-    
-    # Risk scores (Level 2)
-    if st.session_state.analyzer.risk_scores:
-        st.subheader("⚠️ Risk Assessment")
-        
-        # Risk statistics
-        risk_values = list(st.session_state.analyzer.risk_scores.values())
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Average Risk", f"{np.mean(risk_values):.3f}")
-        
-        with col2:
-            high_risk_count = sum(1 for r in risk_values if r > 0.7)
-            st.metric("High Risk Nodes", high_risk_count)
-        
-        with col3:
-            medium_risk_count = sum(1 for r in risk_values if 0.3 <= r <= 0.7)
-            st.metric("Medium Risk Nodes", medium_risk_count)
-        
-        with col4:
-            low_risk_count = sum(1 for r in risk_values if r < 0.3)
-            st.metric("Low Risk Nodes", low_risk_count)
-        
-        # Risk heatmap
-        risk_heatmap = st.session_state.visualizer.create_risk_heatmap()
-        if risk_heatmap:
-            st.plotly_chart(risk_heatmap, use_container_width=True)
-        
-        # Advanced risk dashboard (Level 2)
-        if st.session_state.advanced_analyzer and hasattr(st.session_state.advanced_analyzer, 'risk_factors'):
-            if st.session_state.advanced_analyzer.risk_factors:
-                st.subheader("🔬 Advanced Risk Analysis")
-                
-                advanced_figures = st.session_state.visualizer.create_advanced_risk_dashboard(
-                    st.session_state.advanced_analyzer.risk_factors
-                )
-                
-                for fig in advanced_figures:
-                    st.plotly_chart(fig, use_container_width=True)
-        
-        # Top risky nodes
-        st.subheader("🚨 Top Risky Nodes")
-        
-        sorted_risks = sorted(st.session_state.analyzer.risk_scores.items(), 
-                            key=lambda x: x[1], reverse=True)
-        
-        for i, (node, risk_score) in enumerate(sorted_risks[:10], 1):
-            node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
+        with col_sim_control:
+            st.subheader("⚙️ Stress Test Config")
+            st.info("Simulasi dampak gangguan eksternal terhadap profil risiko vendor.")
             
-            if risk_score > 0.7:
-                risk_class = "risk-high"
-                risk_level = "HIGH"
-            elif risk_score > 0.3:
-                risk_class = "risk-medium"
-                risk_level = "MEDIUM"
-            else:
-                risk_class = "risk-low"
-                risk_level = "LOW"
+            demand_surge = st.slider("Kenaikan Permintaan (%)", 0, 100, 0)
+            weather_disruption = st.checkbox("Gangguan Cuaca (Banjir)", help="Menambah estimasi delay 5 hari")
             
-            st.markdown(f"""
-            <div class="{risk_class}">
-                <strong>{i}. {node}</strong> ({node_type})<br>
-                Risk Score: {risk_score:.3f} - <strong>{risk_level} RISK</strong>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Vulnerability analysis
-    vulnerability = st.session_state.analyzer.get_vulnerability_analysis()
-    if vulnerability:
-        st.subheader("🛡️ Vulnerability Analysis")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.metric("Vulnerability Score", f"{vulnerability.get('vulnerability_score', 0):.3f}")
-            st.metric("Articulation Points", len(vulnerability.get('articulation_points', [])))
-        
-        with col2:
-            st.metric("Critical Bridges", len(vulnerability.get('bridges', [])))
-            st.metric("Bottlenecks", len(vulnerability.get('bottlenecks', [])))
-        
-        # Show critical nodes
-        if vulnerability.get('articulation_points'):
-            st.markdown("**🔴 Critical Nodes (Single Points of Failure):**")
-            for point in vulnerability['articulation_points'][:5]:
-                node_type = st.session_state.data_processor.node_types.get(point, 'unknown')
-                st.write(f"• **{point}** ({node_type})")
-
-def show_advanced_analysis():
-    """Show advanced analysis tab (Level 2 features)"""
-    if not st.session_state.analysis_complete:
-        st.warning("Please run analysis first to see advanced features.")
-        return
-    
-    st.header("🔍 Advanced Analysis")
-    
-    # Community detection
-    if st.session_state.analyzer.communities:
-        st.subheader("🏘️ Community Detection")
-        
-        communities = st.session_state.analyzer.communities
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.metric("Number of Communities", communities.get('num_communities', 0))
-        
-        with col2:
-            # Average community size
-            if 'stats' in communities:
-                sizes = [stats['size'] for stats in communities['stats'].values()]
-                avg_size = np.mean(sizes) if sizes else 0
-                st.metric("Average Community Size", f"{avg_size:.1f}")
-        
-        # Community visualization
-        community_fig = st.session_state.visualizer.create_community_visualization(communities)
-        if community_fig:
-            st.plotly_chart(community_fig, use_container_width=True)
-        
-        # Community details
-        st.subheader("📋 Community Details")
-        
-        if 'stats' in communities:
-            for comm_id, stats in communities['stats'].items():
-                with st.expander(f"Community {comm_id} ({stats['size']} nodes)"):
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**Nodes:**")
-                        for node in stats['nodes'][:10]:  # Show first 10 nodes
-                            node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
-                            st.write(f"• {node} ({node_type})")
-                        
-                        if len(stats['nodes']) > 10:
-                            st.write(f"... and {len(stats['nodes']) - 10} more")
-                    
-                    with col2:
-                        st.write("**Node Type Distribution:**")
-                        for node_type, count in stats['node_types'].items():
-                            if count > 0:
-                                st.write(f"• {node_type.title()}: {count}")
-                        
-                        st.metric("Community Density", f"{stats['density']:.3f}")
-    
-    # Anomaly detection
-    if st.session_state.analyzer.anomalies:
-        st.subheader("🚨 Anomaly Detection")
-        
-        anomalies = st.session_state.analyzer.anomalies
-        anomalous_nodes = [node for node, data in anomalies.items() if data['is_anomaly']]
-        
-        st.metric("Anomalous Nodes Found", len(anomalous_nodes))
-        
-        if anomalous_nodes:
-            st.markdown("**🔍 Detected Anomalies:**")
+        with col_sim_result:
+            st.subheader("📊 Hasil Simulasi")
             
-            # Sort by anomaly score
-            sorted_anomalies = sorted(
-                [(node, data) for node, data in anomalies.items() if data['is_anomaly']],
-                key=lambda x: x[1]['anomaly_score'],
-                reverse=True
+            # Apply logic
+            sim_df = df.copy()
+            
+            # Base risk logic from original (simplified for simulation demo)
+            # If demand surges, risk increases slightly (0.1 point per % for demo)
+            sim_df['New_Risk_Score'] = sim_df['Risk_Score'] + (demand_surge * 0.2)
+            
+            # If weather disruption, add 5 days to metric and spike risk
+            if weather_disruption:
+                sim_df['Actual_Shipping_Days'] += 5
+                sim_df['New_Risk_Score'] += 20 # Major penalty
+            
+            # Cap at 100
+            sim_df['New_Risk_Score'] = sim_df['New_Risk_Score'].clip(upper=100)
+            
+            # Show Before/After Comparison for top 5 affected
+            sim_df['Risk Increase'] = sim_df['New_Risk_Score'] - sim_df['Risk_Score']
+            top_affected = sim_df.groupby('Vendor_Name')[['Risk_Score', 'New_Risk_Score']].mean().reset_index()
+            top_affected['Diff'] = top_affected['New_Risk_Score'] - top_affected['Risk_Score']
+            top_affected = top_affected.sort_values('Diff', ascending=False).head(5)
+            
+            st.write("Top 5 Vendor Terdampak:")
+            
+            # Chart
+            st.bar_chart(
+                top_affected.set_index('Vendor_Name')[['Risk_Score', 'New_Risk_Score']],
+                color=["#bdc3c7", "#e74c3c"]
             )
             
-            for node, data in sorted_anomalies[:10]:
-                node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
-                score = data['anomaly_score']
-                method = data['method']
-                
-                st.markdown(f"""
-                <div class="risk-high">
-                    <strong>{node}</strong> ({node_type})<br>
-                    Anomaly Score: {score:.3f} - Method: {method}
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Supply chain insights
-    insights = st.session_state.analyzer.get_supply_chain_insights()
-    if insights:
-        st.subheader("💡 Supply Chain Insights")
-        
-        if 'structure' in insights:
-            structure = insights['structure']
+            avg_risk_before = df['Risk_Score'].mean()
+            avg_risk_after = sim_df['New_Risk_Score'].mean()
             
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Supplier Ratio", f"{structure.get('supplier_ratio', 0):.1%}")
-            
-            with col2:
-                st.metric("Customer Ratio", f"{structure.get('customer_ratio', 0):.1%}")
-            
-            with col3:
-                st.metric("Supply Chain Depth", f"{structure.get('supply_chain_depth', 0)} tiers")
-        
-        if 'connectivity' in insights:
-            connectivity = insights['connectivity']
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.metric("Average Degree", f"{connectivity.get('mean_degree', 0):.1f}")
-                st.metric("Isolated Nodes", connectivity.get('isolated_nodes', 0))
-            
-            with col2:
-                st.metric("Highly Connected Nodes", connectivity.get('highly_connected_nodes', 0))
-                st.metric("Degree Variance", f"{connectivity.get('degree_variance', 0):.2f}")
-
-def show_scenario_planning():
-    """Show scenario planning and simulation tab"""
-    if not st.session_state.analysis_complete or st.session_state.advanced_analyzer is None:
-        st.warning("Please run Level 2 analysis first to access scenario planning.")
-        return
-    
-    st.header("🛡️ Scenario Planning & Simulation")
-    
-    # Scenario configuration
-    st.subheader("🎯 Configure Disruption Scenarios")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**🔥 Predefined Scenarios**")
-        
-        if st.button("🏭 Simulate Major Supplier Disruption"):
-            # Find top suppliers by out-degree
-            suppliers = [node for node in st.session_state.data_processor.graph.nodes() 
-                        if st.session_state.data_processor.node_types.get(node) == 'supplier']
-            
-            if suppliers:
-                # Get top 2 suppliers by connections
-                supplier_degrees = [(node, st.session_state.data_processor.graph.out_degree(node)) 
-                                  for node in suppliers]
-                supplier_degrees.sort(key=lambda x: x[1], reverse=True)
-                top_suppliers = [node for node, _ in supplier_degrees[:2]]
-                
-                scenarios = [{
-                    'name': 'Major Supplier Disruption',
-                    'nodes': top_suppliers,
-                    'type': 'removal'
-                }]
-                
-                results = st.session_state.advanced_analyzer.simulate_disruption_scenarios(scenarios)
-                display_scenario_results(results)
-        
-        if st.button("🚪 Simulate Key Intermediary Failure"):
-            # Find key intermediaries
-            intermediaries = [node for node in st.session_state.data_processor.graph.nodes() 
-                            if st.session_state.data_processor.node_types.get(node) == 'intermediary']
-            
-            if intermediaries and 'betweenness_centrality' in st.session_state.analyzer.metrics:
-                # Get highest betweenness centrality intermediary
-                intermediary_centrality = [(node, st.session_state.analyzer.metrics['betweenness_centrality'].get(node, 0)) 
-                                         for node in intermediaries]
-                intermediary_centrality.sort(key=lambda x: x[1], reverse=True)
-                
-                if intermediary_centrality:
-                    key_intermediary = intermediary_centrality[0][0]
-                    
-                    scenarios = [{
-                        'name': 'Key Intermediary Failure',
-                        'nodes': [key_intermediary],
-                        'type': 'removal'
-                    }]
-                    
-                    results = st.session_state.advanced_analyzer.simulate_disruption_scenarios(scenarios)
-                    display_scenario_results(results)
-        
-        if st.button("🌊 Simulate Regional Disruption"):
-            # Simulate community-based disruption
-            if st.session_state.analyzer.communities:
-                communities = st.session_state.analyzer.communities['assignments']
-                community_sizes = {}
-                
-                for node, comm_id in communities.items():
-                    if comm_id not in community_sizes:
-                        community_sizes[comm_id] = []
-                    community_sizes[comm_id].append(node)
-                
-                # Find largest community
-                largest_comm = max(community_sizes.items(), key=lambda x: len(x[1]))
-                
-                scenarios = [{
-                    'name': 'Regional Disruption',
-                    'nodes': largest_comm[1][:5],  # Disrupt top 5 nodes in largest community
-                    'type': 'removal'
-                }]
-                
-                results = st.session_state.advanced_analyzer.simulate_disruption_scenarios(scenarios)
-                display_scenario_results(results)
-    
-    with col2:
-        st.markdown("**🎲 Custom Scenario Builder**")
-        
-        # Custom scenario builder
-        scenario_name = st.text_input("Scenario Name", value="Custom Scenario")
-        
-        # Node selection
-        all_nodes = list(st.session_state.data_processor.graph.nodes())
-        selected_nodes = st.multiselect(
-            "Select Nodes to Disrupt",
-            all_nodes,
-            help="Choose nodes that will be affected in this scenario"
-        )
-        
-        disruption_type = st.selectbox(
-            "Disruption Type",
-            ["removal", "capacity_reduction"],
-            help="removal: Complete node failure, capacity_reduction: Partial capacity loss"
-        )
-        
-        if st.button("🚀 Run Custom Scenario") and selected_nodes:
-            scenarios = [{
-                'name': scenario_name,
-                'nodes': selected_nodes,
-                'type': disruption_type
-            }]
-            
-            results = st.session_state.advanced_analyzer.simulate_disruption_scenarios(scenarios)
-            display_scenario_results(results)
-    
-    # Critical paths analysis
-    st.subheader("🛜 Critical Paths Analysis")
-    
-    if st.button("🔍 Identify Critical Paths"):
-        critical_paths = st.session_state.advanced_analyzer.identify_critical_paths()
-        
-        if critical_paths:
-            st.markdown("**🎆 Most Critical Supply Chain Paths:**")
-            
-            for i, path_info in enumerate(critical_paths[:5], 1):
-                path = path_info['path']
-                criticality = path_info['criticality']
-                length = path_info['length']
-                
-                path_str = " → ".join(path)
-                
-                with st.expander(f"Path {i}: {path_info['supplier']} to {path_info['customer']} (Criticality: {criticality:.3f})"):
-                    st.write(f"**Full Path:** {path_str}")
-                    st.write(f"**Path Length:** {length} hops")
-                    st.write(f"**Criticality Score:** {criticality:.3f}")
-                    
-                    # Analyze each node in the path
-                    st.write("**Node Analysis:**")
-                    for node in path:
-                        node_type = st.session_state.data_processor.node_types.get(node, 'unknown')
-                        degree = st.session_state.data_processor.graph.degree(node)
-                        
-                        risk_info = ""
-                        if hasattr(st.session_state.advanced_analyzer, 'risk_factors') and st.session_state.advanced_analyzer.risk_factors:
-                            if 'composite' in st.session_state.advanced_analyzer.risk_factors:
-                                risk_score = st.session_state.advanced_analyzer.risk_factors['composite'].get(node, 0)
-                                risk_info = f" (Risk: {risk_score:.3f})"
-                        
-                        st.write(f"  • **{node}** ({node_type}, degree: {degree}){risk_info}")
-        else:
-            st.info("No critical paths found. This might indicate a very sparse or disconnected network.")
-    
-    # Resilience recommendations
-    st.subheader("📝 Resilience Recommendations")
-    
-    if st.button("💡 Generate Recommendations"):
-        recommendations = st.session_state.advanced_analyzer.generate_resilience_recommendations()
-        
-        if recommendations:
-            # Group recommendations by type
-            rec_types = {}
-            for rec in recommendations:
-                rec_type = rec['type']
-                if rec_type not in rec_types:
-                    rec_types[rec_type] = []
-                rec_types[rec_type].append(rec)
-            
-            for rec_type, recs in rec_types.items():
-                st.markdown(f"**🎯 {rec_type.title()} Recommendations:**")
-                
-                for rec in recs:
-                    priority = rec.get('priority', 'medium')
-                    priority_color = {
-                        'critical': '🔴',
-                        'high': '🟠',
-                        'medium': '🟡',
-                        'low': '🟢'
-                    }.get(priority, '🟡')
-                    
-                    st.markdown(f"{priority_color} **{rec['description']}**")
-                    st.markdown(f"   *Impact:* {rec['impact']}")
-                    
-                    if 'node' in rec:
-                        st.markdown(f"   *Target:* {rec['node']} ({rec.get('node_type', 'unknown')})")
-                    
-                    st.markdown("---")
-        else:
-            st.info("No specific recommendations generated. Your supply chain appears to be well-structured.")
-
-def display_scenario_results(results: Dict):
-    """Display simulation results"""
-    if not results:
-        st.error("No simulation results to display.")
-        return
-    
-    st.subheader("📈 Simulation Results")
-    
-    for scenario_name, result in results.items():
-        st.markdown(f"**🎯 Scenario: {scenario_name}**")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Nodes Removed", result.get('nodes_removed', 0))
-        
-        with col2:
-            st.metric("Edges Lost", result.get('edges_lost', 0))
-        
-        with col3:
-            connectivity_loss = result.get('connectivity_loss', 0)
-            st.metric("Connectivity Loss", f"{connectivity_loss:.1%}")
-        
-        with col4:
-            criticality = result.get('criticality_score', 0)
-            st.metric("Criticality Score", f"{criticality:.3f}")
-        
-        # Impact assessment
-        connectivity_loss = result.get('connectivity_loss', 0)
-        fragmentation = result.get('fragmentation', 0)
-        isolation_impact = result.get('isolation_impact', 0)
-        
-        if connectivity_loss > 0.5:
-            impact_level = "🔴 SEVERE"
-            impact_color = "risk-high"
-        elif connectivity_loss > 0.3:
-            impact_level = "🟠 HIGH"
-            impact_color = "risk-medium"
-        elif connectivity_loss > 0.1:
-            impact_level = "🟡 MEDIUM"
-            impact_color = "risk-medium"
-        else:
-            impact_level = "🟢 LOW"
-            impact_color = "risk-low"
-        
-        st.markdown(f"""
-        <div class="{impact_color}">
-            <strong>Impact Assessment: {impact_level}</strong><br>
-            Network Fragmentation: {fragmentation} new components<br>
-            Isolation Impact: {isolation_impact:.1%} of nodes isolated<br>
-            Largest Remaining Component: {result.get('largest_component_size', 0)} nodes
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
+            st.metric("Proj. Average Network Risk", f"{avg_risk_after:.1f}", f"{avg_risk_after - avg_risk_before:+.1f} points", delta_color="inverse")
 
 if __name__ == "__main__":
     main()

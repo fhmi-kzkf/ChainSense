@@ -24,9 +24,10 @@ coverage.xml
 
 # Streamlit
 .streamlit/
-
+.secrets.toml
+.gitignore
 # Data files
-*.csv
+
 *.xlsx
 *.json
 data/

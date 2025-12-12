@@ -45,11 +45,41 @@ class SupplyChainData:
                 except Exception as e:
                     st.error(f"Error reading CSV file: {str(e)}")
                     return False
+            
+            # Handle column mapping for synthetic data
+            self._map_columns()
+            
             return True
         except Exception as e:
             st.error(f"Error loading file: {str(e)}")
             return False
     
+    def _map_columns(self):
+        """Map columns from synthetic data to expected format"""
+        if self.df is None:
+            return
+        
+        # Column mapping for synthetic data
+        column_mapping = {
+            'Vendor_Name': 'supplier',
+            'Customer_Location': 'customer',
+            'Quantity': 'quantity',
+            'Actual_Shipping_Days': 'actual_shipping_days',
+            'Lead_Time_Planned': 'lead_time_planned',
+            'Risk_Score': 'risk_score'
+        }
+        
+        # Apply column mapping
+        for old_col, new_col in column_mapping.items():
+            if old_col in self.df.columns:
+                self.df[new_col] = self.df[old_col]
+        
+        # Ensure we have the required columns
+        required_columns = ['supplier', 'customer']
+        for col in required_columns:
+            if col not in self.df.columns and col.title() in self.df.columns:
+                self.df[col] = self.df[col.title()]
+
     def load_multiple_files(self, uploaded_files) -> bool:
         """Load and combine multiple CSV/Excel files"""
         try:
@@ -267,7 +297,10 @@ class SupplyChainData:
         try:
             self.graph = nx.DiGraph()
             
-            # Add edges from supplier to customer
+            # Group transactions by supplier-customer pairs to aggregate information
+            edge_data = {}
+            
+            # Add edges from supplier to customer with aggregated data
             for _, row in self.df.iterrows():
                 supplier = str(row['supplier']).strip()
                 customer = str(row['customer']).strip()
@@ -276,16 +309,47 @@ class SupplyChainData:
                 if not supplier or not customer or supplier == 'nan' or customer == 'nan':
                     continue
                 
-                # Add edge attributes if available
-                edge_attrs = {}
+                # Create edge key
+                edge_key = (supplier, customer)
+                
+                # Initialize edge data if not exists
+                if edge_key not in edge_data:
+                    edge_data[edge_key] = {
+                        'frequency': 0,
+                        'total_quantity': 0,
+                        'total_delay': 0,
+                        'delay_count': 0,
+                        'transactions': []
+                    }
+                
+                # Update edge data
+                edge_data[edge_key]['frequency'] += 1
                 if 'quantity' in self.df.columns and pd.notna(row['quantity']):
-                    edge_attrs['quantity'] = row['quantity']
-                if 'price' in self.df.columns and pd.notna(row['price']):
-                    edge_attrs['price'] = row['price']
-                if 'product' in self.df.columns and pd.notna(row['product']):
-                    edge_attrs['product'] = str(row['product'])
-                if 'date' in self.df.columns and pd.notna(row['date']):
-                    edge_attrs['date'] = str(row['date'])
+                    edge_data[edge_key]['total_quantity'] += row['quantity']
+                
+                # Calculate delay if delay columns exist
+                if 'actual_shipping_days' in self.df.columns and 'lead_time_planned' in self.df.columns:
+                    actual = row['actual_shipping_days']
+                    planned = row['lead_time_planned']
+                    if pd.notna(actual) and pd.notna(planned):
+                        delay = max(0, actual - planned)
+                        edge_data[edge_key]['total_delay'] += delay
+                        edge_data[edge_key]['delay_count'] += 1
+                
+                # Store transaction for reference
+                edge_data[edge_key]['transactions'].append(row.to_dict())
+            
+            # Add edges with aggregated attributes
+            for (supplier, customer), data in edge_data.items():
+                edge_attrs = {
+                    'frequency': data['frequency'],
+                    'total_quantity': data['total_quantity'],
+                    'title': self._create_edge_title(data)
+                }
+                
+                # Add average delay if available
+                if data['delay_count'] > 0:
+                    edge_attrs['avg_delay'] = data['total_delay'] / data['delay_count']
                 
                 self.graph.add_edge(supplier, customer, **edge_attrs)
             
@@ -297,6 +361,17 @@ class SupplyChainData:
         except Exception as e:
             st.error(f"Error building graph: {str(e)}")
             return False
+    
+    def _create_edge_title(self, edge_data: dict) -> str:
+        """Create tooltip title for an edge with aggregated information"""
+        title = f"Transactions: {edge_data['frequency']}<br>"
+        title += f"Total Quantity: {edge_data['total_quantity']}<br>"
+        
+        if edge_data['delay_count'] > 0:
+            avg_delay = edge_data['total_delay'] / edge_data['delay_count']
+            title += f"Average Delay: {avg_delay:.1f} days<br>"
+        
+        return title
     
     def _classify_nodes(self):
         """Classify nodes as suppliers, customers, or intermediaries"""
@@ -461,51 +536,31 @@ class SupplyChainData:
         }
     
     def create_sample_data(self) -> pd.DataFrame:
-        """Create sample supply chain data for testing"""
-        np.random.seed(42)
-        
-        suppliers = ['Supplier_A', 'Supplier_B', 'Supplier_C', 'Supplier_D']
-        distributors = ['Distributor_X', 'Distributor_Y', 'Distributor_Z']
-        retailers = ['Retailer_1', 'Retailer_2', 'Retailer_3', 'Retailer_4', 'Retailer_5']
-        products = ['Product_Alpha', 'Product_Beta', 'Product_Gamma']
-        
-        data = []
-        
-        # Supplier to Distributor connections
-        for supplier in suppliers:
-            for distributor in np.random.choice(distributors, size=np.random.randint(1, 3), replace=False):
-                data.append({
-                    'supplier': supplier,
-                    'customer': distributor,
-                    'product': np.random.choice(products),
-                    'quantity': np.random.randint(100, 1000),
-                    'price': np.random.uniform(10, 100),
-                    'date': f"2024-{np.random.randint(1, 13):02d}-{np.random.randint(1, 29):02d}"
-                })
-        
-        # Distributor to Retailer connections
-        for distributor in distributors:
-            for retailer in np.random.choice(retailers, size=np.random.randint(2, 4), replace=False):
-                data.append({
-                    'supplier': distributor,
-                    'customer': retailer,
-                    'product': np.random.choice(products),
-                    'quantity': np.random.randint(50, 500),
-                    'price': np.random.uniform(15, 120),
-                    'date': f"2024-{np.random.randint(1, 13):02d}-{np.random.randint(1, 29):02d}"
-                })
-        
-        # Add some direct supplier to retailer connections
-        for _ in range(5):
-            supplier = np.random.choice(suppliers)
-            retailer = np.random.choice(retailers)
-            data.append({
-                'supplier': supplier,
-                'customer': retailer,
-                'product': np.random.choice(products),
-                'quantity': np.random.randint(20, 200),
-                'price': np.random.uniform(12, 90),
-                'date': f"2024-{np.random.randint(1, 13):02d}-{np.random.randint(1, 29):02d}"
+        """Create sample supply chain data for demonstration"""
+        try:
+            # Try to load the synthetic data file if it exists
+            if os.path.exists('chainsense_synthetic_data.csv'):
+                sample_df = pd.read_csv('chainsense_synthetic_data.csv')
+                self.df = sample_df
+                self._map_columns()
+                return self.df
+            else:
+                # Fallback to original sample data
+                data = {
+                    'supplier': [f'Supplier_{i}' for i in range(1, 21)] * 5,
+                    'customer': [f'Customer_{i}' for i in range(1, 11)] * 10,
+                    'product': [f'Product_{i}' for i in range(1, 6)] * 20,
+                    'quantity': [i * 10 for i in range(1, 11)] * 10,
+                    'price': [i * 100 for i in range(1, 11)] * 10,
+                    'date': pd.date_range('2024-01-01', periods=100, freq='D').strftime('%Y-%m-%d').tolist() * 1
+                }
+                sample_df = pd.DataFrame(data)
+                return sample_df
+        except Exception as e:
+            st.error(f"Error creating sample data: {str(e)}")
+            # Return minimal sample data
+            sample_df = pd.DataFrame({
+                'supplier': ['Supplier_A', 'Supplier_B', 'Supplier_C'],
+                'customer': ['Customer_X', 'Customer_Y', 'Customer_Z']
             })
-        
-        return pd.DataFrame(data)
+            return sample_df
