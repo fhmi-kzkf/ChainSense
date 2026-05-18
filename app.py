@@ -621,7 +621,7 @@ def main():
                 )
             },
             hide_index=True,
-            width='stretch'
+            use_container_width=True
         )
 
     # === TAB 3: SIMULATION ===
@@ -716,7 +716,8 @@ def main():
                                         "Probability", format="%.2f", min_value=0, max_value=1
                                     )
                                 },
-                                hide_index=True, width='stretch'
+                                hide_index=True,
+                                use_container_width=True
                             )
 
     # === TAB 4: COMPARISON TOOL ===
