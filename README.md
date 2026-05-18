@@ -1,106 +1,190 @@
-# 🔗 ChainSense v2.5 Executive Dashboard
+# 🔗 ChainSense — AI-Powered Supply Chain Resilience Engine
 
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.32+-red.svg)](https://streamlit.io/)
-[![Gemini AI](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-purple.svg)](https://deepmind.google/technologies/gemini/)
-[![Status](https://img.shields.io/badge/Status-Live-brightgreen.svg)](#)
+[![Gemma 4](https://img.shields.io/badge/AI-Gemma%204%20E2B-purple.svg)](https://huggingface.co/google/gemma-4)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Next-Gen Supply Chain Intelligence Platform**
-*Powered by Graph Theory & Generative AI*
+**Predict vendor failures before they happen.**  
+*Powered by Gemma 4 + Graph Neural Networks*
 
 </div>
 
 ---
 
-## 🌟 What's New in v2.5
+## 🌍 What is ChainSense?
 
-ChainSense has been completely re-architected into a professional **Executive Dashboard**. It transforms raw supply chain data into a 3-layer intelligence system.
+ChainSense is a real-time supply chain intelligence platform that transforms raw logistics data into strategic AI-driven decisions. It combines:
 
-### 1. 📂 **Universal Data Loader (AI Powered)**
--   **Zero-Config Upload**: Upload ANY csv file.
--   **🤖 AI Semantic Mapper**: If your column names don't match (e.g., "Supplier" instead of "Vendor_Name"), our AI agent (Gemini 2.5) automatically detects and renames them for you.
--   **🛡️ Data Polyfill**: Missing critical data? The system automatically synthesizes missing values (like `Actual_Shipping_Days` or `Risk_Score`) so the dashboard never crashes.
+- 🤖 **Gemma 4** (via Unsloth, 4-bit quantized) for natural language reasoning, emergency briefings, and explainable AI
+- 🧠 **Graph Convolutional Network (GCN)** for node-level disruption probability prediction
+- 📊 **Interactive Streamlit Dashboard** for live risk monitoring and scenario simulation
 
-### 2. 📊 **3-Layer Dashboard Architecture**
--   **Layer 1 (KPI Cards)**: Instant view of Total Orders, On-Time Performance, Critical Vendors, and Costs.
--   **Layer 2 (AI Briefing)**: A dedicated Generative AI Consultant that analyzes your unique data and gives 3 "Tactical Recommendations".
--   **Layer 3 (Deep Dive)**: 
-    -   **Interactive Risk Map**: Physics-based graph visualization.
-    -   **Vendor Scorecard**: Progress bars and status pills.
-    -   **Crisis Simulator**: Stress-test your network against Demand Surges and Weather Events.
+---
+
+## 🏗️ Architecture
+
+```
+[Streamlit Frontend]
+       │
+       │  HTTP (via Ngrok tunnel)
+       ▼
+[Kaggle Backend — FastAPI]
+       ├── /analyze  (task: "mapping")      → AI Column Semantic Mapper
+       ├── /analyze  (task: "analysis")     → Emergency Strategic Briefing
+       └── /analyze  (task: "gnn_predict")  → GCN Risk Prediction + XAI Narrative
+```
+
+---
+
+## ✨ Features
+
+### 🤖 Universal AI Data Loader
+Upload **any CSV file** — ChainSense handles the rest.
+- **AI Semantic Mapper**: Gemma 4 auto-detects and renames mismatched columns (e.g., `"Distributor"` → `"Vendor_Name"`)
+- **Smart Polyfill**: Synthesizes missing critical columns so the dashboard never crashes
+
+### 📊 KPI Dashboard (Layer 1)
+Instant view of your network's vital signs:
+- **Total Orders** — Volume processed
+- **On-Time Performance (%)** — Delivery reliability
+- **Critical Vendors** — Vendors with Risk Score > 75
+- **Avg Shipping Cost** — Cost per order
+
+### 🗺️ Spatial & Temporal Intelligence (Layer 2)
+- **Geographic Risk Heatmap** — Map-based risk view (requires lat/lon columns)
+- **Temporal Risk Trend** — Risk score trend over time
+
+### 🚨 Emergency Strategic Briefing (AI)
+One click → Gemma 4 generates a structured crisis report:
+- Critical situation analysis
+- Worst-case cascading failure scenario + estimated % impact
+- 3 drastic mitigation steps
+- Priority execution command
+
+### 🕸️ Supply Chain Network Graph
+Physics-based interactive graph of your vendor–customer network:
+- 🔴 **Red** = Critical Risk (>75) | 🟡 **Yellow** = Warning (40–75) | 🟢 **Green** = Safe (<40)
+- Hover tooltips: Risk Score, Warehouse Activity, Bottleneck Score
+- Filter by vendor
+
+### 📋 Vendor Scorecard
+Per-vendor performance table with progress bar risk level, lead time, and delivery status.
+
+### ⚡ Stress Test / Crisis Simulator
+Simulate external disruptions and measure network impact:
+- **Demand Surge slider** (0–100%)
+- **Weather Disruption toggle** (+5 days delay, +20 risk penalty)
+- **Heuristic mode**: Instant top-5 affected vendor chart
+- **GNN mode**: Run Graph Convolutional Network → disruption probability per node + Gemma 4 XAI narrative
+
+### ⚖️ Vendor Comparison Tool
+Side-by-side comparison of any two vendors — Risk Score, On-Time Rate, Avg Lead Time, with automatic delta.
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
--   Python 3.10+
--   A Google Gemini API Key (Get it [here](https://aistudio.google.com/app/apikey))
+- Python 3.10+
+- A running ChainSense Kaggle Backend (see [Backend Setup](#backend-setup))
 
-### Installation
+### 1. Clone & Install
 
-1.  **Clone the Repo**
-    ```bash
-    git clone https://github.com/yourusername/ChainSense.git
-    cd ChainSense
-    ```
+```bash
+git clone https://github.com/fhmi-kzkf/ChainSense.git
+cd ChainSense
+pip install -r requirements.txt
+```
 
-2.  **Install Dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 2. Configure Backend URL
 
-3.  **Configure Secrets**
-    Create a file at `.streamlit/secrets.toml`:
-    ```toml
-    GEMINI_API_KEY = "your-api-key-here"
-    ```
+In `app.py`, set your Ngrok URL from the Kaggle backend:
 
-4.  **Run the App**
-    ```bash
-    streamlit run app.py
-    ```
+```python
+BACKEND_URL = "https://your-ngrok-url.ngrok-free.app"
+```
 
----
+### 3. Run the App
 
-## 🛠️ Features Deep Dive
-
-### 🤖 AI Semantic Mapper
-Got a messy dataset? No problem.
--   **Problem**: You have a Pharma dataset with columns like `Distributor_Name` and `City`.
--   **Solution**: ChainSense detects the mismatch, sends the schema to Gemini, and auto-maps it to `Vendor_Name` and `Customer_Location`.
-
-### ⚡ Crisis Simulation
-What if demand spikes by 50%? What if a flood hits Jakarta?
--   Use the **Simulation Tab** to adjust sliders.
--   Watch the "Projected Risk" metric update in real-time.
--   See which vendors will collapse under pressure.
-
-### 🗺️ Network Graph
--   **Nodes**: Vendors (colored by Risk) and Customers.
--   **Edges**: Shipment volume.
--   **Physics**: Drag and drop nodes to disentangle complex networks.
+```bash
+streamlit run app.py
+# or on Windows:
+run_app.bat
+```
 
 ---
 
-## 📂 Project Structure
+## 🖥️ Backend Setup (Kaggle + Ngrok)
+
+The AI features require the Kaggle backend running on a GPU notebook.
+
+### Option A — Gemma 4 + GNN (Recommended)
+Use `kaggle_backend.py` — Full featured: Gemma 4 E2B (Unsloth 4-bit) + 2-layer GCN
+
+### Option B — Ollama + Gemma 2
+Use `kaggle_backend_ollama.py` — Lighter setup using Ollama inference engine
+
+### Option C — HuggingFace Transformers
+Use `kaggle_backend_transformers.py` — Uses standard transformers pipeline, no Unsloth required
+
+**Steps:**
+1. Open a Kaggle notebook with **GPU T4** enabled
+2. Paste the chosen backend file as a single cell
+3. Install dependencies (see comments inside each backend file)
+4. Set your `NGROK_AUTH_TOKEN` and run
+5. Copy the printed `Public URL` into `app.py`'s `BACKEND_URL`
+
+---
+
+## 📁 Project Structure
 
 ```
 ChainSense/
-├── app.py                      # Main Application Logic (Monolith)
-├── chainsense_synthetic_data.csv # Default Dataset
-├── requirements.txt            # Dependencies
-├── .streamlit/
-│   └── secrets.toml            # API Keys (GitIgnored)
-└── README.md                   # Documentation
+├── app.py                          # Main Streamlit application
+├── kaggle_backend.py               # Backend: Gemma 4 + GCN (FastAPI)
+├── kaggle_backend_ollama.py        # Backend: Ollama + Gemma 2 (FastAPI)
+├── kaggle_backend_transformers.py  # Backend: HuggingFace Transformers (FastAPI)
+├── generate_chainsense_data.py     # Synthetic supply chain data generator
+├── chainsense_synthetic_data.csv   # Default dataset
+├── chainsense_pharma_data.csv      # Alternative: Pharma supply chain dataset
+├── Chainsense_Routes.csv           # Sample logistics routes data
+├── requirements.txt                # Python dependencies
+├── config.ini                      # App configuration
+├── run_app.bat                     # Windows quick-run script
+├── setup.bat                       # Windows setup script
+├── runtime.txt                     # Python version spec (for deployment)
+└── .streamlit/
+    └── secrets.toml                # API keys (gitignored)
 ```
 
-## 📄 License
-MIT License. Free to use for educational and enterprise prototypes.
+---
+
+## 🧠 Technical Details
+
+### GNN Architecture
+- **Model**: 2-layer Graph Convolutional Network (GCNConv via PyTorch Geometric)
+- **Input features per node**: degree centrality, betweenness centrality, normalized risk score, normalized shipping days, on-time ratio
+- **Output**: Disruption probability (0–1) per node
+- **Fallback**: Weighted heuristic scoring when PyG is unavailable
+
+### LLM (Gemma 4 E2B)
+- Loaded via **Unsloth** with 4-bit quantization for GPU efficiency
+- Tasks: semantic column mapping, emergency briefings, XAI narrative generation
+- All prompts are English-only, structured output format
 
 ---
+
+## 📄 License
+
+MIT License — Free to use for educational and enterprise prototypes.
+
+---
+
 <div align="center">
-    <i>Built by the ChainSense Team</i>
+  <b>ChainSense</b> — See the Break Before It Breaks.<br/>
+  <i>Built for the Gemma Hackathon Special Track</i>
 </div>
