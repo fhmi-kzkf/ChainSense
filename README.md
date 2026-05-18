@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.32+-red.svg)](https://streamlit.io/)
-[![Gemini AI](https://img.shields.io/badge/AI-Gemini%201.5%20Flash-purple.svg)](https://deepmind.google/technologies/gemini/)
+[![Gemini AI](https://img.shields.io/badge/AI-Gemini%202.5%20Flash-purple.svg)](https://deepmind.google/technologies/gemini/)
 [![Status](https://img.shields.io/badge/Status-Live-brightgreen.svg)](#)
 
 **Next-Gen Supply Chain Intelligence Platform**
@@ -20,7 +20,7 @@ ChainSense has been completely re-architected into a professional **Executive Da
 
 ### 1. 📂 **Universal Data Loader (AI Powered)**
 -   **Zero-Config Upload**: Upload ANY csv file.
--   **🤖 AI Semantic Mapper**: If your column names don't match (e.g., "Supplier" instead of "Vendor_Name"), our AI agent (Gemini 1.5) automatically detects and renames them for you.
+-   **🤖 AI Semantic Mapper**: If your column names don't match (e.g., "Supplier" instead of "Vendor_Name"), our AI agent (Gemini 2.5) automatically detects and renames them for you.
 -   **🛡️ Data Polyfill**: Missing critical data? The system automatically synthesizes missing values (like `Actual_Shipping_Days` or `Risk_Score`) so the dashboard never crashes.
 
 ### 2. 📊 **3-Layer Dashboard Architecture**
