@@ -2,30 +2,42 @@ import pandas as pd
 import numpy as np
 import random
 from datetime import datetime, timedelta
-from faker import Faker
-
-# Initialize Faker
-fake = Faker('id_ID')  # Indonesian locale
 
 # Set seed for reproducibility
 np.random.seed(42)
 random.seed(42)
 
 # Parameters
-num_rows = 2000
+num_rows = 2500
 
-# Define lists and weights
-cities = ['Jakarta', 'Surabaya', 'Bandung', 'Medan', 'Makassar', 'Jayapura']
-city_weights = [0.3, 0.25, 0.15, 0.1, 0.1, 0.1]  # Weighted toward Jakarta & Surabaya
+# Define Pro-Realism Indonesian Cities & Coordinates
+city_data = {
+    'Jakarta': (-6.2088, 106.8456),
+    'Surabaya': (-7.2575, 112.7521),
+    'Bandung': (-6.9175, 107.6191),
+    'Medan': (3.5952, 98.6722),
+    'Makassar': (-5.1476, 119.4327),
+    'Jayapura': (-2.5330, 140.7181),
+    'Banjarmasin': (-3.3194, 114.5908),
+    'Denpasar': (-8.6705, 115.2126),
+    'Palembang': (-2.9761, 104.7754),
+    'Morotai': (2.3271, 128.4900) # Structural Fragility Node
+}
 
-product_categories = ['Electronics', 'Clothing', 'Home & Garden', 'Automotive']
+cities = list(city_data.keys())
+city_weights = [0.25, 0.2, 0.1, 0.08, 0.08, 0.07, 0.07, 0.07, 0.06, 0.02] 
 
+product_categories = ['Industrial Parts', 'Consumer Goods', 'Medical Supplies', 'Automotive']
+
+# Pro-Realism Vendor Names
 vendors = [
-    "PT Logistik Cepat",
-    "CV Maju Jaya", 
-    "Global Trans",
-    "Mitra Abadi",
-    "CV Kargo Lambat"  # Problematic vendor
+    "PT Samudera Logistik Nusantara", # The Black Swan Candidate
+    "PT Khatulistiwa Trans Express",
+    "CV Bahari Persada",
+    "PT Jaya Nusantara Logistik",
+    "CV Persada Cargo",              # Zombie Node Candidate
+    "PT Trans Khatulistiwa",
+    "CV Samudera Jaya"
 ]
 
 shipping_modes = ['Air', 'Truck', 'Sea']
@@ -33,170 +45,99 @@ shipping_modes = ['Air', 'Truck', 'Sea']
 # Generate base dates for 2024
 start_date = datetime(2024, 1, 1)
 end_date = datetime(2024, 12, 31)
-# Convert to list for easier sampling
 date_list = [start_date + timedelta(days=x) for x in range((end_date - start_date).days + 1)]
 
-# Function to generate SKU based on category
-def generate_sku(category):
-    prefixes = {
-        'Electronics': 'ELEC',
-        'Clothing': 'CLTH',
-        'Home & Garden': 'HMGN',
-        'Automotive': 'AUTO'
-    }
-    suffix = ''.join(random.choices('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', k=5))
-    return f"{prefixes[category]}-{suffix}"
-
-# Function to generate unit price based on category
-def generate_unit_price(category):
-    if category == 'Electronics':
-        return random.randint(5000000, 20000000)  # 5jt-20jt
-    elif category == 'Clothing':
-        return random.randint(100000, 500000)     # 100rb-500rb
-    elif category == 'Home & Garden':
-        return random.randint(200000, 3000000)    # 200rb-3jt
-    elif category == 'Automotive':
-        return random.randint(500000, 8000000)    # 500rb-8jt
-
-# Function to calculate shipping cost
-def calculate_shipping_cost(city, weight, mode):
-    # Base costs by mode
-    base_costs = {'Air': 50000, 'Truck': 20000, 'Sea': 15000}
-    base_cost = base_costs[mode]
-    
-    # Distance multipliers (simplified)
-    distance_multiplier = 1.0
-    if city == 'Jayapura':
-        distance_multiplier = random.uniform(3, 5)  # 3x-5x more expensive
-    elif city in ['Medan', 'Makassar']:
-        distance_multiplier = 1.5
-    
-    # Weight factor (assuming weight correlates with quantity)
-    return base_cost + (weight * 1000 * distance_multiplier)
-
-# Function to calculate planned lead time
 def calculate_planned_lead_time(city):
-    if city in ['Jakarta', 'Bandung']:
+    if city in ['Jakarta', 'Bandung', 'Surabaya']:
         return random.randint(1, 3)
-    elif city == 'Jayapura':
-        return random.randint(10, 14)
-    else:  # Other cities (outside Java)
-        return random.randint(5, 7)
+    elif city in ['Jayapura', 'Morotai']:
+        return random.randint(10, 15)
+    else:
+        return random.randint(4, 7)
 
 # Generate data
 data = []
 
 for i in range(num_rows):
-    # Order ID
-    order_id = f"ORD-2024-{str(i+1).zfill(4)}"
-    
-    # Order Date
+    order_id = f"CS-2024-{str(i+1).zfill(4)}"
     order_date = random.choice(date_list)
-    
-    # Customer Location
     customer_location = np.random.choice(cities, p=city_weights)
+    lat, lon = city_data[customer_location]
     
-    # Product Category
     product_category = random.choice(product_categories)
+    quantity = max(1, int(np.random.normal(30, 15)))
+    unit_price = random.randint(500000, 50000000)
     
-    # SKU
-    sku = generate_sku(product_category)
+    # Structural Fragility Rule: Morotai only served by CV Bahari Persada
+    if customer_location == 'Morotai':
+        vendor_name = "CV Bahari Persada"
+    else:
+        vendor_name = random.choice(vendors)
     
-    # Quantity (normal distribution, mean=20)
-    quantity = max(1, int(np.random.normal(20, 10)))
-    quantity = min(quantity, 100)  # Cap at 100
-    
-    # Unit Price
-    unit_price = generate_unit_price(product_category)
-    
-    # Vendor Name
-    vendor_name = random.choice(vendors)
-    
-    # Shipping Mode
     shipping_mode = random.choice(shipping_modes)
-    
-    # Weight estimation (for shipping cost calculation)
-    weight = quantity * 0.5  # Simplified assumption
-    
-    # Shipping Cost
-    shipping_cost = calculate_shipping_cost(customer_location, weight, shipping_mode)
-    
-    # Lead Time Planned
     lead_time_planned = calculate_planned_lead_time(customer_location)
-    
-    # Actual Shipping Days
     actual_shipping_days = lead_time_planned
     
-    # Apply delays based on business rules
-    # Rule 1: CV Kargo Lambat delay (60% chance of 3-7 extra days)
-    if vendor_name == "CV Kargo Lambat" and random.random() < 0.6:
-        actual_shipping_days += random.randint(3, 7)
+    # --- ANOMALY INJECTION ---
     
-    # Rule 2: December peak season delay (2-4 extra days for all vendors)
+    # 1. The Black Swan: PT Samudera Logistik Nusantara risk spike after Q3
+    black_swan_active = False
+    if vendor_name == "PT Samudera Logistik Nusantara" and order_date.month >= 9:
+        actual_shipping_days += random.randint(5, 12)
+        black_swan_active = True
+        
+    # 2. Zombie Nodes: CV Persada Cargo (High volume, always late)
+    if vendor_name == "CV Persada Cargo":
+        quantity = random.randint(80, 150) # High Volume
+        actual_shipping_days += random.randint(2, 5) # Consistently Late
+        
+    # 3. Peak Season Delay
     if order_date.month == 12:
         actual_shipping_days += random.randint(2, 4)
     
     # Delivery Status
-    # 5% chance of being "Damaged/Returned"
-    if random.random() < 0.05:
-        delivery_status = "Damaged/Returned"
-    elif actual_shipping_days > lead_time_planned:
+    if actual_shipping_days > lead_time_planned:
         delivery_status = "Late"
+    elif random.random() < 0.03:
+        delivery_status = "Damaged/Returned"
     else:
         delivery_status = "On Time"
-    
-    # Risk Score (0-100)
-    # Based on delivery performance and location risk
+        
+    # Risk Score Calculation
     risk_score = 0
-    
-    # Base score from delivery performance
     if delivery_status == "Late":
-        # More delay = higher risk
-        delay_ratio = max(0, (actual_shipping_days - lead_time_planned) / lead_time_planned)
-        risk_score += min(50, delay_ratio * 30)  # Cap at 50
+        risk_score += 40
+    if black_swan_active:
+        risk_score += 50 # Massive spike
+    if customer_location in ['Jayapura', 'Morotai']:
+        risk_score += 15
+    if vendor_name == "CV Persada Cargo":
+        risk_score += 20
+        
+    risk_score = min(100, max(0, risk_score + random.randint(-5, 5)))
     
-    # Location risk factor
-    if customer_location == 'Jayapura':
-        risk_score += 20  # Remote location
-    elif customer_location in ['Medan', 'Makassar']:
-        risk_score += 10  # Regional challenges
+    # Shipping Cost Calculation
+    base_costs = {'Air': 500000, 'Truck': 150000, 'Sea': 100000}
+    shipping_cost = base_costs[shipping_mode] + (quantity * 5000)
     
-    # Vendor risk factor
-    if vendor_name == "CV Kargo Lambat":
-        risk_score += 25
-    
-    # December peak season risk
-    if order_date.month == 12:
-        risk_score += 5
-    
-    # Ensure risk score is between 0-100
-    risk_score = min(100, max(0, risk_score))
-    
-    # Add row to data
     data.append({
         'Order_ID': order_id,
         'Order_Date': order_date.strftime('%Y-%m-%d'),
         'Customer_Location': customer_location,
+        'Latitude': lat,
+        'Longitude': lon,
         'Product_Category': product_category,
-        'SKU': sku,
         'Quantity': quantity,
         'Unit_Price': unit_price,
         'Vendor_Name': vendor_name,
         'Shipping_Mode': shipping_mode,
-        'Shipping_Cost': round(shipping_cost, 2),
-        'Lead_Time_Planned': lead_time_planned,
+        'Shipping_Cost': shipping_cost,
         'Actual_Shipping_Days': actual_shipping_days,
+        'Planned_Lead_Time': lead_time_planned,
         'Delivery_Status': delivery_status,
-        'Risk_Score': round(risk_score, 2)
+        'Risk_Score': risk_score
     })
 
-# Create DataFrame
 df = pd.DataFrame(data)
-
-# Save to CSV
 df.to_csv('chainsense_synthetic_data.csv', index=False)
-
-print(f"Generated {len(df)} rows of synthetic supply chain data")
-print(f"Data saved to chainsense_synthetic_data.csv")
-print("\nSample of generated data:")
-print(df.head())
+print(f"✅ Pro-Realism Dataset 2.0 Generated: {len(df)} rows")

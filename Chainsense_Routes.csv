@@ -1,0 +1,7 @@
+Route_ID,Origin,Destination,Commodity,Critical_Transit,Priority_Level,Avg_Lead_Time_Days
+CS-001,Morowali (ID),Shanghai (CN),Nickel Ore,South China Sea,High,14
+CS-002,Belawan (ID),Rotterdam (NL),Crude Palm Oil,Suez Canal,Medium,35
+CS-003,Tanjung Priok (ID),Singapore (SG),Electronics,Malacca Strait,High,3
+CS-004,Balikpapan (ID),Tokyo (JP),LNG,Luzon Strait,Medium,12
+CS-005,Surabaya (ID),Los Angeles (US),Furniture,Panama Canal,Low,28
+CS-006,Bitung (ID),Davao (PH),Fishery Products,Celebes Sea,Medium,5

@@ -2,23 +2,38 @@ import streamlit as st
 import pandas as pd
 import networkx as nx
 from pyvis.network import Network
-import google.generativeai as genai
 import tempfile
 import os
 import json
 import random
 import numpy as np
+import requests
 import streamlit.components.v1 as components
 
-# ==========================================
-# CONFIGURATION & SETUP
-# ==========================================
 st.set_page_config(
     page_title="ChainSense | Pro Supply Chain Dashboard",
     page_icon="🔗",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# ==========================================
+# CONFIGURATION & SETUP
+# ==========================================
+BACKEND_URL = "https://ehtel-deserted-boris.ngrok-free.dev" # Ganti dengan URL Ngrok dari Kaggle
+
+TARGET_SCHEMA = {
+    'Vendor_Name': 'Name of the supplier/vendor',
+    'Customer_Location': 'Destination city/location',
+    'Order_Date': 'Date of order/transaction',
+    'Delivery_Status': 'Status (Late, On Time, etc)',
+    'Risk_Score': 'Numerical risk value (0-100)',
+    'Order_ID': 'Unique identifier for the order',
+    'Quantity': 'Number of items',
+    'Shipping_Cost': 'Cost of shipping',
+    'Actual_Shipping_Days': 'Number of days taken to ship',
+    'Product_Category': 'Category of product'
+}
 
 # Custom CSS for Professional Dark UI
 st.markdown("""
@@ -149,77 +164,115 @@ def calculate_kpis(df):
     
     return total_orders, on_time_pct, high_risk_vendors, avg_cost
 
-def get_gemini_analysis(summary_text):
-    """Call Gemini API for intelligence briefing"""
+def get_gemma_analysis(summary_text):
+    """Call Kaggle Backend API for intelligence briefing"""
     try:
-        api_key = st.secrets.get("GEMINI_API_KEY")
-        if not api_key:
-            return "⚠️ API Key not found. Please set GEMINI_API_KEY in secrets.toml."
+        payload = {
+            "task": "analysis",
+            "summary": summary_text
+        }
+        headers = {"ngrok-skip-browser-warning": "true"}
+        
+        response = requests.post(f"{BACKEND_URL}/analyze", json=payload, headers=headers, timeout=180)
+        
+        if response.status_code == 200:
+            return response.json().get('response', "⚠️ No response content.")
+        else:
+            return f"⚠️ Backend Error: Status {response.status_code}. Check your Kaggle terminal."
             
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        prompt = f"""
-        Kamu adalah Konsultan Logistik Senior. Berdasarkan ringkasan data berikut, berikan 3 rekomendasi taktis singkat dan actionable untuk manajer gudang.
-        Fokus pada mitigasi risiko dan efisiensi biaya.
-        
-        Data Summary:
-        {summary_text}
-        
-        Output format:
-        1. **[Judul Rekomendasi 1]**: [Penjelasan singkat]
-        2. **[Judul Rekomendasi 2]**: [Penjelasan singkat]
-        3. **[Judul Rekomendasi 3]**: [Penjelasan singkat]
-        """
-        
-        response = model.generate_content(prompt)
-        return response.text
+    except requests.exceptions.ConnectionError:
+        return "❌ Failed to connect to Kaggle Backend. Ensure Ngrok tunnel is active and BACKEND_URL is correct in app.py."
     except Exception as e:
         return f"❌ AI Analysis Failed: {str(e)}"
 
-def smart_map_columns(df, api_key):
-    """
-    Use Gemini AI to map user columns to ChainSense standard schema.
-    """
-    TARGET_SCHEMA = {
-        'Vendor_Name': 'Name of the supplier/vendor',
-        'Customer_Location': 'Destination city/location',
-        'Order_Date': 'Date of order/transaction',
-        'Delivery_Status': 'Status (Late, On Time, etc)',
-        'Risk_Score': 'Numerical risk value (0-100)',
-        'Order_ID': 'Unique identifier for the order',
-        'Quantity': 'Number of items',
-        'Shipping_Cost': 'Cost of shipping',
-        'Actual_Shipping_Days': 'Number of days taken to ship',
-        'Product_Category': 'Category of product' # Added for better mapping if available
-    }
-    
+def get_gnn_prediction(sim_df):
+    """Prepare graph data and call Kaggle Backend API for GNN risk prediction"""
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Build graph
+        G = nx.from_pandas_edgelist(sim_df, source='Vendor_Name', target='Customer_Location', edge_attr='Quantity')
         
+        degree_c = nx.degree_centrality(G)
+        between_c = nx.betweenness_centrality(G)
+        
+        # Build node index map
+        node_names = list(G.nodes())
+        node_to_idx = {name: i for i, name in enumerate(node_names)}
+        
+        # Edge list
+        edge_list = [[node_to_idx[u], node_to_idx[v]] for u, v in G.edges()]
+        
+        # Helper dictionaries for fast lookup
+        vendor_stats = sim_df.groupby('Vendor_Name').agg({
+            'New_Risk_Score': 'mean',
+            'Actual_Shipping_Days': 'mean',
+            'Delivery_Status': lambda x: (x == 'On Time').mean() if len(x) > 0 else 0
+        }).to_dict('index')
+        
+        max_risk = sim_df['New_Risk_Score'].max() or 1
+        max_ship = sim_df['Actual_Shipping_Days'].max() or 1
+        
+        node_features = []
+        for node in node_names:
+            dc = degree_c.get(node, 0)
+            bc = between_c.get(node, 0)
+            
+            if node in vendor_stats:
+                st = vendor_stats[node]
+                risk_norm = st['New_Risk_Score'] / max_risk
+                ship_norm = st['Actual_Shipping_Days'] / max_ship
+                ontime_ratio = st['Delivery_Status']
+            else:
+                risk_norm = 0.0
+                ship_norm = 0.0
+                ontime_ratio = 1.0
+                
+            node_features.append([dc, bc, risk_norm, ship_norm, ontime_ratio])
+            
+        payload = {
+            "task": "gnn_predict",
+            "node_features": node_features,
+            "edge_list": edge_list,
+            "node_names": node_names
+        }
+        headers = {"ngrok-skip-browser-warning": "true"}
+        
+        response = requests.post(f"{BACKEND_URL}/analyze", json=payload, headers=headers, timeout=180)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"error": f"Backend Error: {response.status_code}"}
+            
+    except requests.exceptions.ConnectionError:
+        return {"error": "❌ Failed to connect to Backend. Ensure Ngrok is active."}
+    except Exception as e:
+        return {"error": f"❌ GNN Analysis Failed: {str(e)}"}
+
+def smart_map_columns(df):
+    """
+    Use Kaggle Backend AI to map user columns to ChainSense standard schema.
+    """
+    try:
         user_columns = list(df.columns)
+        payload = {
+            "task": "mapping",
+            "target_schema": TARGET_SCHEMA,
+            "user_columns": user_columns
+        }
+        headers = {"ngrok-skip-browser-warning": "true"}
         
-        prompt = f"""
-        You are a Data Engineering Expert. Map the user's column names to the target standard schema.
+        response = requests.post(f"{BACKEND_URL}/analyze", json=payload, headers=headers, timeout=180)
         
-        Target Schema (Standard): {json.dumps(TARGET_SCHEMA)}
-        User Columns (Input): {json.dumps(user_columns)}
-        
-        Instructions:
-        1. Analyze the semantic meaning of User Columns.
-        2. Map them to the keys in Target Schema.
-        3. Only include mappings where you are confident.
-        4. Return ONLY a valid JSON object where keys are User Columns and values are Target Schema keys.
-        5. DO NOT wrap the output in markdown code blocks (like ```json). Just the raw JSON string.
-        """
-        
-        response = model.generate_content(prompt)
-        text_response = response.text.replace("```json", "").replace("```", "").strip()
-        
-        mapping = json.loads(text_response)
-        return mapping
-        
+        if response.status_code == 200:
+            mapping = response.json().get('mapping', {})
+            return mapping
+        else:
+            st.error(f"Backend Error: Status {response.status_code}")
+            return {}
+            
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Failed to connect to Kaggle Backend. Check your Ngrok connection.")
+        return {}
     except Exception as e:
         st.error(f"AI Mapping Failed: {str(e)}")
         return {}
@@ -307,54 +360,54 @@ def main():
     is_valid, validation_msg = validate_data(df)
     
     if not is_valid:
-        st.warning("⚠️ Column mismatch detected. Attempting AI Semantic Mapping...")
+        st.warning(f"⚠️ Column mismatch detected. {validation_msg}. Attempting to fix...")
         
-        # Check for API Key
-        api_key = st.secrets.get("GEMINI_API_KEY")
-        if not api_key:
-            st.error("❌ Data Validation Failed & API Key Missing for AI Fix.\n\n" + validation_msg)
-            return
-
-        # Trigger AI Mapping
-        with st.spinner("🤖 AI is analyzing column semantics..."):
-            mapping = smart_map_columns(df, api_key)
+        # Trigger Backend AI Mapping
+        with st.spinner("🤖 Attempting Gemma Cloud Semantic Mapping..."):
+            mapping = smart_map_columns(df)
         
         if mapping:
-            st.success("✨ AI Mapping Generated!")
-            with st.expander("View Column Mapping"):
-                st.json(mapping)
-            
-            # Apply mapping (invert mapping because rename takes {old: new})
-            # The AI was asked for {old: new} based on prompt "keys are User Columns"
-            # Let's verify prompt: "keys are User Columns and values are Target Schema keys" -> {Old: New} -> Correct for rename
-            
             try:
+                # Validate the mapping from AI
+                validated_mapping = {}
+                all_valid = True
+                for user_col, target_col in mapping.items():
+                    if target_col in TARGET_SCHEMA:
+                        validated_mapping[user_col] = target_col
+                    else:
+                        st.warning(f"AI suggested an invalid target column '{target_col}' for your column '{user_col}'. Ignoring this pair.")
+                        all_valid = False
+                
+                mapping = validated_mapping
+
+                st.success("✨ AI Mapping Generated!")
+                with st.expander("View Column Mapping"):
+                    st.json(mapping)
+                
                 df = df.rename(columns=mapping)
                 st.info("✅ Columns renamed successfully.")
-                
-                # POLYFILL: Attempt to fill missing critical data
-                df, modified, mods = ensure_critical_columns(df)
-                if modified:
-                    st.warning("⚠️ Some columns were still missing. Synthetic values generated:")
-                    for m in mods:
-                        st.write(f"- {m}")
-
-                # Re-validate
-                is_valid_2, validation_msg_2 = validate_data(df)
-                if not is_valid_2:
-                    st.error(f"❌ Critical data still missing: {validation_msg_2}")
-                    return
             except Exception as e:
                 st.error(f"Error applying mapping: {e}")
-                return
         else:
-            st.error("❌ AI could not determine a valid mapping.")
-            st.code(validation_msg)
-            return
+            st.error("❌ AI could not determine a valid mapping. Proceeding with polyfill.")
+
+        # POLYFILL: Attempt to fill missing critical columns
+        df, modified, mods = ensure_critical_columns(df)
+        if modified:
+            st.warning("⚠️ Some columns were missing. Synthetic values generated:")
+            for m in mods:
+                st.write(f"- {m}")
+
+    # Final validation check
+    is_valid, validation_msg = validate_data(df)
+    if not is_valid:
+        st.error(f"❌ Critical data still missing after all attempts: {validation_msg}")
+        st.info("Please upload a file that contains the required columns or columns that can be easily mapped by the AI.")
+        return
 
     # Title Section
-    st.title("🔗 ChainSense Executive Dashboard")
-    st.markdown("Supply Chain Risk Monitoring & Intelligence System")
+    st.title("🌍 ChainSense: Global Resilience Engine")
+    st.markdown("Supply Chain Risk Monitoring powered by Gemma 4")
     st.markdown("---")
 
     # ---------------------------------------------------------
@@ -375,42 +428,80 @@ def main():
     st.markdown("###")
 
     # ---------------------------------------------------------
-    # LAYER 2: AI INTELLIGENCE
+    # LAYER 2: SPATIAL & TEMPORAL INTELLIGENCE
+    # ---------------------------------------------------------
+    col_map, col_trend = st.columns([1, 1])
+    
+    with col_map:
+        with st.container(border=True):
+            st.subheader("🗺️ Geographic Risk Heatmap")
+            if 'Latitude' in df.columns and 'Longitude' in df.columns:
+                # Create a simple risk-based map
+                map_df = df.groupby(['Customer_Location', 'Latitude', 'Longitude'])['Risk_Score'].mean().reset_index()
+                # Rename for st.map compatibility
+                map_df = map_df.rename(columns={'Latitude': 'lat', 'Longitude': 'lon'})
+                
+                # Plot map
+                st.map(map_df, color='#ff4d4d' if map_df['Risk_Score'].mean() > 50 else '#4da6ff', size=(map_df['Risk_Score'] * 10).tolist())
+            else:
+                st.info("Coordinates not found. Use Pro-Realism 2.0 dataset to view the map.")
+
+    with col_trend:
+        with st.container(border=True):
+            st.subheader("📈 Temporal Risk Trend")
+            if 'Order_Date' in df.columns:
+                trend_df = df.sort_values('Order_Date').groupby('Order_Date')['Risk_Score'].mean().reset_index()
+                st.line_chart(trend_df.set_index('Order_Date'), color="#4da6ff")
+            else:
+                st.info("Temporal data not available.")
+
+    st.markdown("###")
+
+    # ---------------------------------------------------------
+    # LAYER 3: CLOUD INTELLIGENCE (EMERGENCY BRIEFING)
     # ---------------------------------------------------------
     with st.container(border=True):
-        st.subheader("🤖 ChainSense Intelligence Briefing")
+        st.subheader("🚨 Gemma 4: Emergency Strategic Briefing")
         
         col_ai_btn, col_ai_content = st.columns([1, 4])
-        
         analysis_result = st.empty()
         
         with col_ai_btn:
-            st.write("Generate AI-powered insights based on current risk metrics.")
-            if st.button("Generate AI Analysis", type="primary", use_container_width=True):
+            st.write("Analyze worst-case scenarios and systemic impact.")
+            if st.button("Generate Emergency Briefing", type="primary"):
                 with col_ai_content:
-                    with st.spinner("Consulting AI Expert..."):
-                        # Prepare summary for AI
+                    with st.spinner("Gemma is simulating scenarios via Kaggle..."):
+                        # Prepare a more dramatic summary
+                        avg_risk = df['Risk_Score'].mean()
+                        high_risk_vendors = df[df['Risk_Score']>75]['Vendor_Name'].unique().tolist()
+                        
                         summary = f"""
-                        Total Orders: {total_orders}
-                        On-Time Rate: {on_time_pct:.1f}%
-                        Critical Vendors Count: {critical_vendors}
-                        Average Shipping Cost: {avg_cost}
-                        Top High Risk Vendors: {', '.join(df[df['Risk_Score']>75]['Vendor_Name'].unique().tolist()[:5])}
-                        Average Risk Score: {df['Risk_Score'].mean():.1f}
+                        CURRENT NETWORK SITUATION:
+                        - Average Network Risk: {avg_risk:.1f}/100
+                        - Critical Vendors (Red Zone): {len(high_risk_vendors)} ({', '.join(high_risk_vendors[:3])})
+                        - On-Time Performance: {on_time_pct:.1f}%
+                        - Isolated Locations: {', '.join(df[df['Customer_Location']=='Morotai']['Customer_Location'].unique())}
+                        
+                        INSTRUCTIONS:
+                        Provide a short 'Emergency Briefing'. Narrate the worst-case scenario if one of the critical vendors completely fails today. 
+                        Mention the estimated impact in percentage (%) and drastic actions that must be taken.
                         """
-                        insight = get_gemini_analysis(summary)
+                        insight = get_gemma_analysis(summary)
                         analysis_result.markdown(insight)
         
         with col_ai_content:
             if not analysis_result.text:
-                st.info("Click the button to generate a strategic briefing.")
+                st.info("Click the button to listen to 'Disruption Storytelling' from Gemma 4.")
 
     st.markdown("###")
 
     # ---------------------------------------------------------
     # LAYER 3: DETAIL TABS
     # ---------------------------------------------------------
-    tab1, tab2, tab3 = st.tabs(["🗺️ Peta Risiko (Graph)", "📋 Vendor Scorecard", "⚡ Simulasi Krisis"])
+    # ---------------------------------------------------------
+    # LAYER 4: DETAIL TABS
+    # ---------------------------------------------------------
+    tab1, tab2, tab3, tab4 = st.tabs(["🗺️ Network Graph", "📋 Scorecard", "⚡ Stress Test", "⚖️ Comparison Tool"])
 
     # === TAB 1: GRAPH VISUALIZATION ===
     with tab1:
@@ -421,7 +512,7 @@ def main():
             "Filter Vendor (Node)", 
             options=df['Vendor_Name'].unique(),
             default=None,
-            placeholder="Tampilkan semua vendor..."
+            placeholder="Show all vendors..."
         )
         
         # Prepare Graph Data
@@ -433,8 +524,8 @@ def main():
         G = nx.from_pandas_edgelist(graph_df, source='Vendor_Name', target='Customer_Location', edge_attr='Quantity')
         
         # Calculate Centrality Metrics (translated to business terms)
-        degree_centrality = nx.degree_centrality(G) # Aktivitas Gudang
-        betweenness_centrality = nx.betweenness_centrality(G) # Titik Rawan Macet
+        degree_centrality = nx.degree_centrality(G) # Warehouse Activity
+        betweenness_centrality = nx.betweenness_centrality(G) # Bottleneck Point
         
         # Pyvis Network - Dark Mode
         net = Network(height="600px", width="100%", bgcolor="#262730", font_color="white")
@@ -462,7 +553,7 @@ def main():
                 # Business Metrics Tooltip
                 activity = degree_centrality.get(node, 0)
                 bottleneck = betweenness_centrality.get(node, 0)
-                title += f"\nRisiko: {vendor_risk:.1f}\nAktivitas Gudang: {activity:.2f}\nTitik Rawan Macet: {bottleneck:.2f}"
+                title += f"\nRisk: {vendor_risk:.1f}\nWarehouse Activity: {activity:.2f}\nBottleneck: {bottleneck:.2f}"
                 
             net.add_node(node, label=node, title=title, color=color, size=20 if is_vendor else 10)
 
@@ -497,7 +588,7 @@ def main():
                 except Exception:
                     pass
             
-        st.caption("🔴 Merah: Risiko Tinggi (>75) | 🟡 Kuning: Risiko Sedang (40-75) | 🟢 Hijau: Aman (<40)")
+        st.caption("🔴 Red: High Risk (>75) | 🟡 Yellow: Medium Risk (40-75) | 🟢 Green: Safe (<40)")
 
     # === TAB 2: VENDOR SCORECARD ===
     with tab2:
@@ -530,7 +621,7 @@ def main():
                 )
             },
             hide_index=True,
-            use_container_width=True
+            width='stretch'
         )
 
     # === TAB 3: SIMULATION ===
@@ -539,47 +630,124 @@ def main():
         
         with col_sim_control:
             st.subheader("⚙️ Stress Test Config")
-            st.info("Simulasi dampak gangguan eksternal terhadap profil risiko vendor.")
+            st.info("Simulate the impact of external disruptions on vendor risk profiles.")
             
-            demand_surge = st.slider("Kenaikan Permintaan (%)", 0, 100, 0)
-            weather_disruption = st.checkbox("Gangguan Cuaca (Banjir)", help="Menambah estimasi delay 5 hari")
+            demand_surge = st.slider("Demand Surge (%)", 0, 100, 0)
+            weather_disruption = st.checkbox("Weather Disruption (Flood)", help="Adds estimated delay of 5 days")
+            
+            st.markdown("---")
+            run_gnn = st.button("🧠 Run GNN Prediction (AI)", type="primary", width='stretch')
             
         with col_sim_result:
-            st.subheader("📊 Hasil Simulasi")
+            st.subheader("📊 Simulation Results")
             
             # Apply logic
             sim_df = df.copy()
             
-            # Base risk logic from original (simplified for simulation demo)
-            # If demand surges, risk increases slightly (0.1 point per % for demo)
+            # Base risk logic
             sim_df['New_Risk_Score'] = sim_df['Risk_Score'] + (demand_surge * 0.2)
             
-            # If weather disruption, add 5 days to metric and spike risk
             if weather_disruption:
                 sim_df['Actual_Shipping_Days'] += 5
                 sim_df['New_Risk_Score'] += 20 # Major penalty
             
-            # Cap at 100
             sim_df['New_Risk_Score'] = sim_df['New_Risk_Score'].clip(upper=100)
             
-            # Show Before/After Comparison for top 5 affected
-            sim_df['Risk Increase'] = sim_df['New_Risk_Score'] - sim_df['Risk_Score']
-            top_affected = sim_df.groupby('Vendor_Name')[['Risk_Score', 'New_Risk_Score']].mean().reset_index()
-            top_affected['Diff'] = top_affected['New_Risk_Score'] - top_affected['Risk_Score']
-            top_affected = top_affected.sort_values('Diff', ascending=False).head(5)
+            if not run_gnn:
+                # Show standard heuristic diff
+                sim_df['Risk Increase'] = sim_df['New_Risk_Score'] - sim_df['Risk_Score']
+                top_affected = sim_df.groupby('Vendor_Name')[['Risk_Score', 'New_Risk_Score']].mean().reset_index()
+                top_affected['Diff'] = top_affected['New_Risk_Score'] - top_affected['Risk_Score']
+                top_affected = top_affected.sort_values('Diff', ascending=False).head(5)
+                
+                st.write("Top 5 Affected Vendors (Heuristic):")
+                st.bar_chart(
+                    top_affected.set_index('Vendor_Name')[['Risk_Score', 'New_Risk_Score']],
+                    color=["#bdc3c7", "#e74c3c"]
+                )
+                
+                avg_risk_before = df['Risk_Score'].mean()
+                avg_risk_after = sim_df['New_Risk_Score'].mean()
+                st.metric("Proj. Average Network Risk", f"{avg_risk_after:.1f}", f"{avg_risk_after - avg_risk_before:+.1f} points", delta_color="inverse")
+                st.info("💡 Click 'Run GNN Prediction' to see analysis from Graph Neural Network & Gemma XAI.")
+            else:
+                with st.spinner("Building graph & Calling GNN + XAI Gemma from Backend..."):
+                    result = get_gnn_prediction(sim_df)
+                    
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        gnn_data = result.get("gnn_result", {})
+                        xai_text = result.get("xai_narrative", "No narrative provided.")
+                        high_risk_nodes = result.get("high_risk_nodes", [])
+                        
+                        st.success(f"✅ GNN Prediction Complete (Model: {gnn_data.get('model_type', 'Unknown')})")
+                        
+                        st.markdown("### 🤖 XAI: AI Explanation (Gemma 4)")
+                        st.info(xai_text)
+                        
+                        st.markdown("### 🔴 Critical Nodes (Disruption Prob > 60%)")
+                        if high_risk_nodes:
+                            for node in high_risk_nodes:
+                                st.markdown(f"- **{node}**")
+                        else:
+                            st.success("No critical nodes detected in this scenario.")
+                        
+                        # Compare original vs GNN risk scores in a dataframe
+                        scores = gnn_data.get("risk_scores", [])
+                        nodes = gnn_data.get("node_names", list(sim_df['Vendor_Name'].unique())) # fallback if not returned
+                        
+                        # Note: the API response might not return node_names back directly, but it matches the order we sent
+                        # We sent node_names = list(G.nodes()), we can get it back from G.
+                        G = nx.from_pandas_edgelist(sim_df, source='Vendor_Name', target='Customer_Location')
+                        all_nodes = list(G.nodes())
+                        
+                        if len(scores) == len(all_nodes):
+                            res_df = pd.DataFrame({"Node": all_nodes, "Disruption Probability": scores})
+                            # Filter only vendors
+                            vendors = sim_df['Vendor_Name'].unique()
+                            res_df = res_df[res_df['Node'].isin(vendors)]
+                            res_df = res_df.sort_values(by="Disruption Probability", ascending=False).head(10)
+                            
+                            st.dataframe(
+                                res_df, 
+                                column_config={
+                                    "Disruption Probability": st.column_config.ProgressColumn(
+                                        "Probability", format="%.2f", min_value=0, max_value=1
+                                    )
+                                },
+                                hide_index=True, width='stretch'
+                            )
+
+    # === TAB 4: COMPARISON TOOL ===
+    with tab4:
+        st.subheader("⚖️ Side-by-Side Vendor Resilience Comparison")
+        st.write("Compare the risk profile and connectivity of two vendors side-by-side.")
+        
+        col_comp1, col_comp2 = st.columns(2)
+        
+        all_vendors = sorted(df['Vendor_Name'].unique())
+        
+        with col_comp1:
+            v1 = st.selectbox("Select Vendor A", all_vendors, index=0)
+            v1_data = df[df['Vendor_Name'] == v1]
             
-            st.write("Top 5 Vendor Terdampak:")
+            st.metric("Risk Score", f"{v1_data['Risk_Score'].mean():.1f}")
+            st.metric("On-Time Rate", f"{(v1_data['Delivery_Status'] == 'On Time').mean()*100:.1f}%")
+            st.metric("Avg Lead Time", f"{v1_data['Actual_Shipping_Days'].mean():.1f} days")
             
-            # Chart
-            st.bar_chart(
-                top_affected.set_index('Vendor_Name')[['Risk_Score', 'New_Risk_Score']],
-                color=["#bdc3c7", "#e74c3c"]
-            )
+        with col_comp2:
+            v2 = st.selectbox("Select Vendor B", all_vendors, index=1 if len(all_vendors) > 1 else 0)
+            v2_data = df[df['Vendor_Name'] == v2]
             
-            avg_risk_before = df['Risk_Score'].mean()
-            avg_risk_after = sim_df['New_Risk_Score'].mean()
-            
-            st.metric("Proj. Average Network Risk", f"{avg_risk_after:.1f}", f"{avg_risk_after - avg_risk_before:+.1f} points", delta_color="inverse")
+            st.metric("Risk Score", f"{v2_data['Risk_Score'].mean():.1f}", 
+                      delta=f"{v2_data['Risk_Score'].mean() - v1_data['Risk_Score'].mean():+.1f}",
+                      delta_color="inverse")
+            st.metric("On-Time Rate", f"{(v2_data['Delivery_Status'] == 'On Time').mean()*100:.1f}%",
+                      delta=f"{(v2_data['Delivery_Status'] == 'On Time').mean()*100 - (v1_data['Delivery_Status'] == 'On Time').mean()*100:+.1f}%")
+            st.metric("Avg Lead Time", f"{v2_data['Actual_Shipping_Days'].mean():.1f} days",
+                      delta=f"{v2_data['Actual_Shipping_Days'].mean() - v1_data['Actual_Shipping_Days'].mean():+.1f} days",
+                      delta_color="inverse")
 
 if __name__ == "__main__":
     main()
