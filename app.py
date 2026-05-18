@@ -636,7 +636,7 @@ def main():
             weather_disruption = st.checkbox("Weather Disruption (Flood)", help="Adds estimated delay of 5 days")
             
             st.markdown("---")
-            run_gnn = st.button("🧠 Run GNN Prediction (AI)", type="primary", width='stretch')
+            run_gnn = st.button("🧠 Run GNN Prediction (AI)", type="primary", use_container_width=True)
             
         with col_sim_result:
             st.subheader("📊 Simulation Results")
